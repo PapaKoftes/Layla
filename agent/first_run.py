@@ -364,6 +364,34 @@ def run() -> int:
     if yn("  Save a Web UI theme hint in config (optional)?", False):
         cfg["ui_theme_preset"] = ask("  ui_theme_preset (gothic|dark|light)", "gothic").strip().lower() or "gothic"
 
+    # Persona — companion vs coder/engineer. Fixes the #1 confuser (pd01): a companion-seeker
+    # otherwise lands on the coder model + blunt persona. Operator decision: the installer ASKS.
+    if not cfg.get("persona_choice"):
+        print()
+        print("  Who should Layla be by default?")
+        print("    [1] Companion — warm, conversational (recommended for most)")
+        print("    [2] Coder / engineer — blunt, implementation-focused")
+        _p = ask("  Choose", "1").strip()
+        try:
+            from services.infrastructure.setup_engine import apply_persona_choice
+            apply_persona_choice(cfg, "coder" if _p == "2" else "companion")
+        except Exception:
+            cfg["persona_choice"] = "coder" if _p == "2" else "companion"
+
+    # Content policy — a FORCED choice, never a silent default (pd02). There is no default value.
+    if not cfg.get("content_policy_chosen"):
+        print()
+        print("  Content policy — this is your explicit choice, there is no default:")
+        print("    UNCENSORED  : minimal refusals, adult / NSFW content allowed.")
+        print("    RESTRICTED  : safer, standard refusals.")
+        _allow = yn("  Allow uncensored / adult content?", False)
+        try:
+            from services.infrastructure.setup_engine import apply_content_policy_choice
+            apply_content_policy_choice(cfg, _allow)
+        except Exception:
+            cfg["uncensored"] = cfg["nsfw_allowed"] = cfg["knowledge_unrestricted"] = bool(_allow)
+            cfg["content_policy_chosen"] = True
+
     save_config(cfg)
 
     print()
