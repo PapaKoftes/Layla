@@ -201,7 +201,6 @@ def main(argv: list[str]) -> int:
                 print(f"[lang] downloading translation/intent helper {la['filename']} ...")
                 _dl(la, models_dir=dest, progress=True)
             cfg["language_assist_model"] = la["filename"]
-            cfg["language_assist_enabled"] = True
             print(f"[lang] language helper: {la['name']}")
     # Castilla: optional per-personality (aspect) domain models.
     extra_aspects = [a.strip() for a in (getattr(args, "aspects", "") or "").split(",") if a.strip()]
