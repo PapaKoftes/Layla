@@ -53,3 +53,35 @@ def test_persona_companion_vs_coder():
     # Unknown / empty falls back to companion (never silently the coder default).
     assert apply_persona_choice({}, "xyz")["persona_choice"] == "companion"
     assert apply_persona_choice({}, "")["persona_choice"] == "companion"
+
+
+class _RS:
+    def __init__(self, cfg):
+        self._c = cfg
+
+    def load_config(self):
+        return self._c
+
+
+def test_provision_domain_defaults_to_companion_not_coder():
+    """in05 / #1 confuser: with no explicit domain and no persona config, provisioning must default
+    to a companion (general) model, NOT the old hardcoded 'coding' default."""
+    from install.provision_model import resolve_provision_domain
+
+    # The critical regression: empty config -> 'general', never 'coding'.
+    assert resolve_provision_domain(None, _RS({})) == "general"
+
+
+def test_provision_domain_honors_persona_choice():
+    from install.provision_model import resolve_provision_domain
+
+    # explicit --domain always wins
+    assert resolve_provision_domain("coding", _RS({})) == "coding"
+    # companion persona -> general
+    assert resolve_provision_domain(
+        None, _RS({"persona_choice": "companion", "model_category_preference": "general"})
+    ) == "general"
+    # coder persona -> coding
+    assert resolve_provision_domain(
+        None, _RS({"persona_choice": "coder", "model_category_preference": "coding"})
+    ) == "coding"
