@@ -152,5 +152,51 @@
     "apply_to_file": "Apply to file?",
     "requires_approval": "Apply (requires approval)",
     "delete_conversation": "Delete this conversation?"
+  },
+  "intel": {
+    "title": "intelligence",
+    "refresh": "refresh",
+    "loading": "loading…",
+    "nothing_loaded": "Nothing loaded.",
+    "rel": {
+      "m": "{n}m ago",
+      "h": "{n}h ago",
+      "d": "{n}d ago"
+    },
+    "card": {
+      "mood": "Mood",
+      "goals": "Goals",
+      "world": "World model",
+      "timeline": "Timeline",
+      "decisions": "Decisions",
+      "skills": "Learned skills"
+    },
+    "mood": {
+      "steady": "steady",
+      "valence": "valence",
+      "energy": "energy"
+    },
+    "goals": {
+      "empty": "No active goals. Tell Layla what you're working toward.",
+      "ontrack": "on track",
+      "stalled": "stalled"
+    },
+    "world": {
+      "project": "Project:",
+      "files": "files",
+      "symbols": "symbols",
+      "known": "known project(s)",
+      "empty": "No project set. Point Layla at a workspace."
+    },
+    "timeline": {
+      "empty": "Nothing yet — milestones and events show here as you work together."
+    },
+    "decisions": {
+      "empty": "No recorded decisions yet."
+    },
+    "skills": {
+      "empty": "Layla learns reusable skills from finished multi-step tasks — none yet.",
+      "steps": "steps"
+    }
   }
 }
