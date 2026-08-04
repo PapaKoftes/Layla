@@ -85,3 +85,41 @@ def test_provision_domain_honors_persona_choice():
     assert resolve_provision_domain(
         None, _RS({"persona_choice": "coder", "model_category_preference": "coding"})
     ) == "coding"
+
+
+def test_pd02_runtime_gate_blocks_uncensored_until_chosen():
+    """pd02: the forced content choice never fires on the INSTALL.bat path, so a runtime gate must
+    block uncensored/nsfw behavior until content_policy_chosen — while grandfathering existing configs."""
+    from services.infrastructure.setup_engine import content_uncensored_active
+
+    # Fresh install: uncensored=True in DEFAULTS but content_policy_chosen=False -> GATED OFF.
+    assert content_uncensored_active({"uncensored": True, "content_policy_chosen": False}) is False
+    assert content_uncensored_active({"nsfw_allowed": True, "content_policy_chosen": False}) is False
+    # Existing operator config with no flag -> grandfathered ACTIVE (no disruption).
+    assert content_uncensored_active({"uncensored": True}) is True
+    # Explicitly chosen uncensored -> active; chosen restricted -> off.
+    assert content_uncensored_active({"uncensored": True, "content_policy_chosen": True}) is True
+    assert content_uncensored_active({"uncensored": False, "content_policy_chosen": True}) is False
+    # Nothing set -> off.
+    assert content_uncensored_active({}) is False
+
+
+def test_pd02_gate_blocks_uncensored_prompt_content_on_fresh_install():
+    """The prompt gate: a fresh (unchosen) config must NOT emit the uncensored anti-refusal block;
+    once chosen, it does. Proves the 3 prompt_builder sites are routed through the gate."""
+    from services.prompts.prompt_builder import build_core_sys_parts
+
+    def _parts(cfg):
+        base = {"prompt_static_cache_enabled": False, "honesty_and_boundaries_enabled": True}
+        base.update(cfg)
+        return " ".join(build_core_sys_parts(
+            cfg=base, aspect={"id": "morrigan"}, identity="IDENTITY",
+            personality="PERSONA", goal="write a story about two people",
+            reasoning_mode="", repo_root=AGENT_DIR.parent,
+        ))
+
+    fresh = {"uncensored": True, "nsfw_allowed": True, "content_policy_chosen": False}
+    assert "Refuse clearly only for genuine harm" not in _parts(fresh)
+
+    chosen = {"uncensored": True, "nsfw_allowed": True, "content_policy_chosen": True}
+    assert "Refuse clearly only for genuine harm" in _parts(chosen)
