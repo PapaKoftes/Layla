@@ -172,6 +172,11 @@ async def _call_layla(message: str, aspect_id: str = "morrigan", persona_focus: 
             aspect_id=aspect_id,
             max_response_chars=get_max_response_chars(),
             persona_focus=persona_focus or "",
+            # FORCED, not defaulted: a Discord turn is untrusted inbound input and must never write
+            # files or execute code. Every inbound path routes through here, so this is the one choke
+            # point (parity with Slack/Telegram's TransportAdapter). Locked by test_discord_read_only.
+            allow_write=False,
+            allow_run=False,
         )
     except Exception as e:
         err = str(e).lower()
