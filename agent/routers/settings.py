@@ -37,7 +37,6 @@ _REMOTE_PROTECTED_KEYS = frozenset({
     "remote_rate_limit_per_minute",
     "remote_allowlist",
     "allowed_hosts",
-    "tunnel_enabled",
     "tunnel_token_hash",
     # Security review Findings 7/8: a remote /settings write must not be able to point
     # plugin/MCP/model loading at attacker-staged files or executables.
