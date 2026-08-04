@@ -17,6 +17,8 @@ from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
+from gate import WRITE_TOOLS, write_surface_enabled, write_surface_warning
+
 LAYLA_BASE = os.environ.get("LAYLA_BASE_URL", "http://127.0.0.1:8000")
 
 
@@ -160,12 +162,31 @@ def _chat_sync(
 @app.list_tools()
 async def handle_list_tools() -> types.ListToolsResult:
     from tool_definitions import build_tools_result
-    return build_tools_result()
+    res = build_tools_result()
+    # Opt-out gate: hide the write/exec tools when the surface is disabled so a read-only
+    # bridge does not even advertise them (LAYLA_CURSOR_MCP_WRITE=0).
+    if not write_surface_enabled():
+        res.tools = [t for t in res.tools if t.name not in WRITE_TOOLS]
+    return res
 
 
 @app.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     args = arguments or {}
+
+    # Opt-out gate (default ON). When the write/exec surface is disabled, refuse the dedicated
+    # write tools AND force allow_write/allow_run off on every other tool — a client must not be
+    # able to reach a write/run path through chat_with_layla/agent_handoff on a read-only bridge.
+    if not write_surface_enabled():
+        if name in WRITE_TOOLS:
+            return [types.TextContent(
+                type="text",
+                text=(f"'{name}' is disabled: the cursor-layla-mcp write/exec surface is off "
+                      "(LAYLA_CURSOR_MCP_WRITE=0). Unset it to re-enable."),
+            )]
+        if isinstance(args, dict):
+            args["allow_write"] = False
+            args["allow_run"] = False
 
     # ── add_learning ──────────────────────────────────────
     if name == "add_learning":
@@ -786,6 +807,11 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
 
 
 def main() -> int:
+    import sys
+    # Make the write/exec exposure loud when it is live (localhost-trust surface).
+    if write_surface_enabled():
+        print(write_surface_warning(), file=sys.stderr, flush=True)
+
     async def arun():
         async with stdio_server() as (read_stream, write_stream):
             await app.run(
