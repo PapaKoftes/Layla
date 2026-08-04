@@ -868,6 +868,11 @@ _SYSTEM_PROMPT_BLEED_RE = re.compile(
     r"|Match length to the message"
     r"|Do not output labels or repeat instructions"
     r"|Reply as (?:her|him|them|only|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith|Layla)\b[^.\n]*\bonly\b"
+    # A 3B under an aspect persona sometimes RECITES its own persona in the second person instead of
+    # embodying it — "You are Echo — Layla's continuity facet. Your response is reflective, gently
+    # guiding …" leaked verbatim into a real companion reply (E2E finding, 2026-08-01). A companion
+    # never says "You are <her own facet>" about herself: the earliest such anchor is bleed; cut it.
+    r"|You are (?:Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b"
     r"|#{1,4}[ \t]*(?-i:REFERENCE)\b"
     r"|(?:^|\n)?[ \t]*\[(?:END|End of message|Question)\]",
     re.IGNORECASE,
