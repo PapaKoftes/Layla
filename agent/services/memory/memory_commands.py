@@ -111,6 +111,9 @@ def _handle_remember(content: str, aspect_id: str = "") -> MemoryCommandResult:
             confidence=0.9,
             source="user_command",
             aspect_id=aspect_id or "",
+            # Explicit user "remember this" is intentional and rare — it must not be dropped by the
+            # anti-spam window that this turn's automatic outcome/reinforcement saves may have filled.
+            bypass_rate_limit=True,
         )
         if row_id == -1:
             return MemoryCommandResult(

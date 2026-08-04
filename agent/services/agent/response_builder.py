@@ -866,6 +866,19 @@ _SYSTEM_PROMPT_BLEED_RE = re.compile(
     r"|No theatrical or roleplay opening"
     r"|(?:persona and style notes are )?private stage direction"
     r"|Match length to the message"
+    # A weak 3B under the aspect-behavior block sometimes parrots its own length directive verbatim —
+    # "Response length: concise. terse." / "Be terse: no preamble …" leaked as a tail on a real
+    # (incl. Spanish) reply (E2E finding, 2026-08-04). The answer always precedes it; cut from here.
+    # Keep in sync with services/personality/aspect_behavior.py:64/69/73.
+    r"|Response length:\s*(?:concise|balanced|thorough)\b"
+    r"|Be terse: no preamble"
+    # The familiarity context line (services/personality/familiarity.py) is a PRIVATE 2nd-person note
+    # to Layla about how well she knows the operator — "You have N of M of this operator's stated
+    # preferences on file … how well you know them, not what you can do." A 3B parroted it as a tail on
+    # a factual recall reply (E2E finding, 2026-08-04). Verbatim system text; cut from the earliest anchor.
+    r"|You have \d+ of \d+ of this operator"
+    r"|stated preferences on file"
+    r"|how well you know them, not what you can do"
     r"|Do not output labels or repeat instructions"
     r"|Reply as (?:her|him|them|only|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith|Layla)\b[^.\n]*\bonly\b"
     # A 3B under an aspect persona sometimes RECITES its own persona in the second person instead of

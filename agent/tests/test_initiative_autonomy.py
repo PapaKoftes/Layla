@@ -16,6 +16,24 @@ def test_collect_initiative_hints_respects_gate():
     assert hints and "shell" in hints[0].lower()
 
 
+def test_tool_failure_hint_suppressed_on_conversational_turn():
+    """Regression: a raw tool-failure hint must NOT leak into a conversational reply. When the model
+    spuriously calls a tool during a plain Q&A/recall turn and it fails, 'Recent `read_file` failed …'
+    used to bleed into the user-facing answer. It should surface only on agentic/engineering turns."""
+    from services.infrastructure.initiative_engine import collect_initiative_hints
+
+    cfg = {"initiative_engine_enabled": True}
+    failed = {"action": "read_file", "result": {"ok": False, "error": "File not found"}}
+
+    convo = {"status": "finished", "steps": [failed],
+             "original_goal": "what is my indentation preference?"}
+    assert not any("read_file" in h for h in collect_initiative_hints(convo, cfg))
+
+    agentic = {"status": "finished", "steps": [failed],
+               "original_goal": "fix the read_file path bug"}
+    assert any("read_file" in h for h in collect_initiative_hints(agentic, cfg))
+
+
 def test_propose_step_recovery_respects_allowlist():
     from services.infrastructure.autonomy_optimizer import propose_step_recovery
 
