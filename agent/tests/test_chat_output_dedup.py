@@ -218,6 +218,25 @@ class TestDuplicateBlockCollapse:
         assert out.count("```") == 4  # both blocks kept
         assert "pip install x" in out and "pip install y" in out
 
+    # Live capture (2026-08-04): a 3B reprinted [code + explanation] with a STRAY ``` before the
+    # reprint, so the second block's opening fence line differed ("``` ```python" vs "python") and the
+    # whole-block comparison missed it. Body-comparison must catch it and cut the whole reprint tail.
+    _MANGLED_REPRINT = (
+        "Una función recursiva se llama a sí misma. Ejemplo:\n"
+        "```python\ndef factorial(n):\n    return 1 if n == 0 else n * factorial(n - 1)\n```\n"
+        "Este código calcula el factorial.\n"
+        "``` ```python\ndef factorial(n):\n    return 1 if n == 0 else n * factorial(n - 1)\n```\n"
+        "Este código calcula el factorial."
+    )
+
+    def test_mangled_stray_fence_reprint_collapsed(self):
+        from services.agent.response_builder import _collapse_duplicate_blocks
+        out = _collapse_duplicate_blocks(self._MANGLED_REPRINT)
+        assert out.count("def factorial") == 1, f"reprint not collapsed: {out!r}"
+        assert out.count("Este código calcula el factorial") == 1
+        assert "Una función recursiva" in out  # the real answer survives
+        assert "``` ```" not in out  # no dangling stray fence left behind
+
     def test_polish_output_collapses_with_and_without_cfg(self):
         from services.infrastructure.output_polish import polish_output
         assert polish_output(self._DUP, {"output_quality_gate_enabled": True}).count("ssh user@host") == 1

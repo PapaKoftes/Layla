@@ -806,17 +806,25 @@ def _collapse_duplicate_blocks(text: str) -> str:
     if len(blocks) < 2:
         return text
 
-    def _norm(m):
-        return re.sub(r"\s+", " ", m.group(0)).strip().lower()
+    def _body(m):
+        # Compare the code BODY, not the whole block: a small model reprinting its answer often emits
+        # a stray '```' before the reprint, so the second block's OPENING fence line differs
+        # ("``` ```python" vs "python") even though the code is identical. Comparing whole blocks
+        # missed that (live Spanish factorial reprint, 2026-08-04); comparing bodies catches it.
+        s = m.group(0)
+        first_nl = s.find("\n")
+        last_fence = s.rfind("\n```")
+        body = s[first_nl + 1: last_fence] if (first_nl != -1 and last_fence > first_nl) else s
+        return re.sub(r"\s+", " ", body).strip().lower()
 
-    last = blocks[-1]
-    last_norm = _norm(last)
-    for b in blocks[:-1]:
-        if _norm(b) == last_norm:
-            # everything from the last (duplicate) block to the end is a reprint — cut it,
-            # then trim a dangling lead-in line if it too duplicates earlier prose.
-            head = text[: last.start()].rstrip()
-            return head
+    last_body = _body(blocks[-1])
+    if len(last_body) > 10:
+        for b in blocks[:-1]:
+            if _body(b) == last_body:
+                # everything from the last (duplicate) block to the end is a reprint — cut from the
+                # start of that block (which, for a stray-fence reprint, sits AT the stray '```', so
+                # no dangling fence is left behind).
+                return text[: blocks[-1].start()].rstrip()
     return text
 
 
