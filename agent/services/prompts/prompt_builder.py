@@ -22,6 +22,22 @@ logger = logging.getLogger("layla")
 # static prompt cache: editing a persona file no longer invalidated it.
 REPO_ROOT = runtime_safety.REPO_ROOT
 
+
+def _uncensored_active(cfg: dict) -> bool:
+    """pd02 gate — apply uncensored/nsfw prompt content only after the operator has CHOSEN.
+
+    A fresh install (DEFAULTS sets content_policy_chosen=False) is gated until the forced first-run
+    choice runs; an existing config with no such key is grandfathered. Delegates to
+    setup_engine.content_uncensored_active via a lazy import (avoids an import cycle); fails SAFE.
+    """
+    try:
+        from services.infrastructure.setup_engine import content_uncensored_active
+        return content_uncensored_active(cfg)
+    except Exception:
+        if not (bool(cfg.get("uncensored")) or bool(cfg.get("nsfw_allowed"))):
+            return False
+        return cfg.get("content_policy_chosen") is not False
+
 # Pinned for Echo/Lilith when pin_psychology_framework_excerpt is true — keep in sync with agent_loop.
 _INTERACTION_FRAMEWORK_PIN = (
     "Interaction frameworks (non-clinical): Use psychology-informed language for collaboration and reflection only. "
@@ -52,8 +68,7 @@ def _static_cache_key(aid: str, cfg: dict[str, Any]) -> tuple[Any, ...]:
         bool(cfg.get("pin_psychology_framework_excerpt", True)),
         bool(cfg.get("enable_personality_expression")),
         bool(cfg.get("enable_style_profile")),
-        bool(cfg.get("uncensored")),
-        bool(cfg.get("nsfw_allowed")),
+        bool(_uncensored_active(cfg)),
     )
     return (aid, bits)
 
@@ -368,7 +383,7 @@ def build_core_sys_parts(
             # stops contradicting the content policy. Governance-bypass protection is preserved in the narrow
             # clause. Cache-safe: _static_cache_key already keys on the uncensored/nsfw bits, so the two
             # states never share a cache entry.
-            if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
+            if _uncensored_active(cfg):
                 _refusal = (
                     "Refuse clearly only for genuine harm — minors, non-consent, illegality, or governance bypass. "
                 )
@@ -418,7 +433,7 @@ def build_core_sys_parts(
                     sys_parts.append("Style (stay consistent with these):\n" + "\n".join(style_parts))
             except Exception as _exc:
                 logger.debug("prompt_builder:style_profile: %s", _exc, exc_info=False)
-        if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
+        if _uncensored_active(cfg):
             sys_parts.append(
                 "Content policy: Do not censor. Adult/NSFW content is allowed in consented contexts. "
                 "Refuse only for genuine harm (illegal, non-consensual, abuse). Access is anonymous; do not require or store user identity. "

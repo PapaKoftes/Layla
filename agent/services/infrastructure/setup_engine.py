@@ -143,6 +143,21 @@ _PERSONA_CHOICES = {
 }
 
 
+def content_uncensored_active(cfg: dict) -> bool:
+    """True when uncensored/nsfw behavior may be applied — the runtime gate for pd02.
+
+    The forced first-run choice only sets `content_policy_chosen` when the CLI wizard runs, but the
+    friend install path (INSTALL.bat -> bootstrap -> START.bat) never invokes it, so uncensored would
+    otherwise default ON silently. This gate blocks the uncensored/anti-refusal prompt content until
+    the choice is made: active only if (uncensored or nsfw) AND content_policy_chosen is not False.
+    Backward-compatible — an EXISTING operator config with no such key is grandfathered (missing !=
+    False), so only a FRESH install (DEFAULTS sets content_policy_chosen=False) is gated until chosen.
+    """
+    if not (bool(cfg.get("uncensored")) or bool(cfg.get("nsfw_allowed"))):
+        return False
+    return cfg.get("content_policy_chosen") is not False
+
+
 def apply_content_policy_choice(cfg: dict, allow_uncensored: bool) -> dict:
     """Record the operator's FORCED first-run content-policy choice (v1-scope-decisions).
 
