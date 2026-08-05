@@ -67,6 +67,9 @@ PROFILE_ROSTER: tuple[tuple[str, str], ...] = (
     ("risk_execution", "How you ship risky changes"),
     ("status_update_style", "How you want status reports"),
     ("watch_folders", "Folders you asked her to watch"),
+    ("warmth_preference", "How you like to be spoken to"),
+    ("support_style", "What helps when you're low"),
+    ("connection_style", "What makes you feel understood"),
 )
 
 # The six operator stats (stat_technical, stat_creative, ...). Absent keys read as the neutral
