@@ -28,6 +28,11 @@ _IDENTITY_LABELS = {
     "formality": "Formality",
     "response_length": "Response length",
     "life_narrative_summary": "About them",
+    # Companion prefs from the intake quiz (stages 9-11) — surfaced so Layla's tone and support
+    # actually reflect how this operator wants to be related to, not just how they work.
+    "warmth_preference": "How they like to be spoken to",
+    "support_style": "What helps when they're low",
+    "connection_style": "What makes them feel understood",
 }
 
 
