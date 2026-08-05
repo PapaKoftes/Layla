@@ -367,7 +367,10 @@ def test_rail_renders_the_title_as_its_own_element():
     assert '<span class="sess-title">' in js, "the rail title must render into its own .sess-title element"
 
 
-def test_rail_title_css_stacks_below_meta_and_clamps_to_two_lines():
+def test_rail_title_css_stacks_below_meta_and_wraps_to_full_name():
+    """Operator request (2026-08): show the FULL chat name — wrap to as many lines as needed and let
+    the item grow, instead of the old 2-line clamp + ellipsis. The meta must still stack above the
+    title (that layout fix stands); only the title's clamp is replaced by a wrap."""
     css = (UI_DIR / "css" / "layla.css").read_text(encoding="utf-8")
     import re
 
@@ -376,30 +379,25 @@ def test_rail_title_css_stacks_below_meta_and_clamps_to_two_lines():
     assert prev and title, "the rail layout rules must exist"
 
     assert "flex-direction:column" in prev.group(1), "meta must stack ABOVE the title, not share its line"
-    # fit-content sizing would shrink-wrap a long title into a narrow column and the 2-line clamp
-    # would then eat most of it — this was a real defect caught by measuring the live DOM.
     assert "align-items:flex-start" not in prev.group(1), "the title must stretch to the rail width"
-    assert "-webkit-line-clamp:2" in title.group(1), "the title clamps to 2 lines"
+    # NEW behavior: wrap, no clamp — the full name shows.
+    assert "-webkit-line-clamp" not in title.group(1), "the title must NOT clamp — it wraps to the full name"
+    assert "white-space:normal" in title.group(1), "the title must wrap (white-space:normal)"
     assert "overflow-wrap:anywhere" in title.group(1), "break only when a word cannot fit"
-    assert "word-break:break-word" not in title.group(1), "word-break chops ordinary words needlessly"
-    # The old rule clamped .sess-preview itself, which is what dragged the meta chips into the clamp.
-    assert "line-clamp" not in prev.group(1), ".sess-preview must not clamp; only .sess-title does"
+    assert "line-clamp" not in prev.group(1), ".sess-preview must not clamp"
 
 
-def test_rail_css_comment_matches_the_rule_it_documents():
-    """The comment said 'up to 2 lines' while the rule clamped 3. A comment that contradicts its
-    rule is how the next reader gets misled."""
+def test_rail_title_comment_matches_the_wrap_rule():
+    """A comment that contradicts its rule misleads the next reader. The .sess-title rule now wraps,
+    so its comment must describe wrapping, not clamping."""
     css = (UI_DIR / "css" / "layla.css").read_text(encoding="utf-8")
     import re
 
-    m = re.search(r"/\* Title clamps to (\w+) lines.*?\*/\s*\.session-item \.sess-title \{([^}]*)\}", css, re.S)
-    assert m, "the .sess-title rule must carry the comment that documents its clamp"
-    word_to_n = {"one": 1, "1": 1, "two": 2, "2": 2, "three": 3, "3": 3}
-    raw = m.group(1).lower()
-    assert raw in word_to_n, f"comment states an unparseable line count: {raw!r}"
-    documented = word_to_n[raw]
-    actual = int(re.search(r"-webkit-line-clamp:(\d+)", m.group(2)).group(1))
-    assert documented == actual, f"comment says {documented} lines, rule clamps {actual}"
+    m = re.search(r"(/\*[^*]*(?:\*(?!/)[^*]*)*\*/)\s*\.session-item \.sess-title \{([^}]*)\}", css, re.S)
+    assert m, "the .sess-title rule must carry a documenting comment"
+    comment, rule = m.group(1).lower(), m.group(2)
+    assert "wrap" in comment, "the comment must document that the title WRAPS"
+    assert "-webkit-line-clamp" not in rule, "the rule must not clamp (matches the wrap comment)"
 
 
 def test_service_worker_cache_version_bumped_for_this_ui_change():
