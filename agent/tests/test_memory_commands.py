@@ -79,6 +79,28 @@ def test_remember_triggers_pattern():
     assert "Python" in r.response or "Stored" in r.response
 
 
+def test_clear_wipes_vectors_not_just_sql():
+    """RED-TEAM regression: `memory clear --confirm` ran only DELETE FROM learnings, leaving the
+    vector store intact — recall (which reads content from vector metadata) then resurrected the
+    'cleared' memories. A clear must wipe vectors too."""
+    calls = {}
+
+    def _fake_delete_vectors(ids):
+        calls["emb_ids"] = list(ids)
+
+    with patch("layla.memory.learnings._conn") as mock_conn, \
+         patch("layla.memory.vector_store.delete_vectors_by_ids", _fake_delete_vectors):
+        db = MagicMock()
+        # two learnings, both with embedding ids
+        db.execute.return_value.fetchall.return_value = [("emb-1",), ("emb-2",)]
+        db.execute.return_value.rowcount = 2
+        mock_conn.return_value.__enter__.return_value = db
+        r = detect_and_handle("memory clear --confirm")
+
+    assert r.is_command is True and r.command == "clear"
+    assert calls.get("emb_ids") == ["emb-1", "emb-2"], "clear must delete the learnings' vectors"
+
+
 def test_remember_bypasses_rate_limit():
     """An explicit user 'remember this' must set bypass_rate_limit=True, so the anti-spam window
     (which this turn's automatic outcome/reinforcement saves can fill) cannot silently drop the one
@@ -194,9 +216,13 @@ def test_clear_requires_confirm():
 
 
 def test_clear_with_confirm():
-    mock_conn = MagicMock()
-    mock_conn.execute.return_value.rowcount = 5
-    with patch("layla.memory.db._conn", return_value=mock_conn):
+    # Clear now routes through learnings.clear_all_learnings (which also wipes vectors), so patch that
+    # path's connection. No embedding ids here → no vector delete attempted; rowcount is the count.
+    with patch("layla.memory.learnings._conn") as mock_conn:
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = []   # no embedding ids
+        db.execute.return_value.rowcount = 5
+        mock_conn.return_value.__enter__.return_value = db
         r = detect_and_handle("memory clear --confirm")
     assert r.is_command is True
     assert r.items_affected == 5
