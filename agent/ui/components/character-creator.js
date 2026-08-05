@@ -291,6 +291,10 @@ export function renderCharacterLab() {
   if (!container) return;
 
   let html = '';
+  // Re-include the close button: this innerHTML overwrite would otherwise destroy the static
+  // #charlab-close-btn (index.html), leaving the modal unclosable (no Escape/backdrop was wired
+  // either — see openCharacterLab). data-action is delegated, so it re-binds on this dynamic node.
+  html += '<button type="button" id="charlab-close-btn" class="charlab-close" data-action="closeCharacterLab" aria-label="Close Character Lab">&times;</button>';
   html += '<div class="charlab-header"><div class="charlab-title">Character Lab</div>';
   html += '<div class="charlab-subtitle">Customize Layla\'s aspects — personality, voice, appearance, titles</div></div>';
 
@@ -327,12 +331,26 @@ export function renderCharacterLab() {
 }
 
 // ── Character Lab panel toggle ──────────────────────────────────────────────
+// Escape must close regardless of where focus sits (a fresh-opened overlay leaves focus on <body>,
+// so an overlay-scoped listener never fires). Document-level, added on open / removed on close so it
+// can't accumulate — same shape as intelligence.js (BL-386).
+function _onCharLabKeydown(e) {
+  if (!_charLabOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCharacterLab(); }
+}
+function _onCharLabBackdrop(e) {
+  const overlay = document.getElementById('character-lab-overlay');
+  if (e.target === overlay) closeCharacterLab();  // click outside the panel closes
+}
+
 export function openCharacterLab() {
   const overlay = document.getElementById('character-lab-overlay');
   if (!overlay) return;
   _charLabOpen = true;
   overlay.classList.add('visible');
   overlay.setAttribute('aria-hidden', 'false');
+  document.addEventListener('keydown', _onCharLabKeydown, true);
+  overlay.addEventListener('mousedown', _onCharLabBackdrop);
   loadCharacterData().then(renderCharacterLab);
 }
 
@@ -342,6 +360,8 @@ export function closeCharacterLab() {
   _charLabOpen = false;
   overlay.classList.remove('visible');
   overlay.setAttribute('aria-hidden', 'true');
+  document.removeEventListener('keydown', _onCharLabKeydown, true);
+  overlay.removeEventListener('mousedown', _onCharLabBackdrop);
 }
 
 // ── Wizard integration ──────────────────────────────────────────────────────
