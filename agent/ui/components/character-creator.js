@@ -418,7 +418,7 @@ const TUTORIAL_STEPS = [
   { id: 'welcome', title: 'Welcome to Layla', text: 'Layla is your sovereign AI companion. She runs entirely on your machine, learns your preferences, and grows alongside you.', highlight: null },
   { id: 'aspects', title: 'Meet the Aspects', text: 'Layla has 6 personality facets — each one shapes how she thinks and communicates. You\'ve already chosen your primary. The others unlock as you use them.', highlight: '#aspect-bar' },
   { id: 'chat', title: 'Start Talking', text: 'Type anything in the chat box. Layla can write code, research topics, plan projects, and learn about you over time.', highlight: '#msg-input' },
-  { id: 'memory', title: 'Memory System', text: 'Everything Layla learns is stored locally. Check the Memory tab to see what she remembers. You can edit or delete any learning.', highlight: '[data-rcp="workspace"]' },
+  { id: 'memory', title: 'Memory', text: 'Everything Layla learns is stored locally. Open the Library tab → Memory to see what she remembers. You can edit or delete any learning.', highlight: '[data-rcp="workspace"]' },
   { id: 'character_lab', title: 'Character Lab', text: 'Customize each aspect\'s personality, voice, and appearance in the Character Lab. Open it any time from the header.', highlight: '#charlab-open-btn' },
   { id: 'complete', title: 'You\'re Ready', text: 'That\'s the basics. Layla will adapt to your style as you work together. Enjoy.', highlight: null },
 ];

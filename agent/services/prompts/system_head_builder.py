@@ -549,10 +549,31 @@ _OUTPUT_DISCIPLINE = (
 )
 
 
-def _append_output_discipline(head: str, cfg: dict) -> str:
+# WARMTH-FIRST discipline for emotional-support turns. The default block above tells the model to
+# "lead with the answer, don't force warmth" — the exact wrong instruction when someone is in pain.
+# On affective turns we swap it for this: be present, validate, be heard first; advice only if asked.
+_OUTPUT_DISCIPLINE_AFFECTIVE = (
+    "## How to be here right now\n"
+    "This person is sharing something personally hard. Your job is to be PRESENT and warm — not to "
+    "fix it. FIRST, let them feel heard: reflect back what they are feeling in your own words, name "
+    "it, and show that it makes sense. Reassurance is welcome here — it is good and right to tell them "
+    "you hear them, that they matter, that what they feel is real. Do NOT lead with a numbered plan, a "
+    "draft message, or 'seek professional help' — that lands as cold and dismissive. Offer perspective "
+    "or a gentle next step only AFTER they feel heard, and only lightly, unless they explicitly ask "
+    "for advice. Read the whole conversation: if they have told you to stop something (e.g. 'I don't "
+    "want a draft'), do NOT do it again. Match their register — soft, human, on their side. You are a "
+    "caring companion in this moment, not a clinician.\n"
+    "Reply with ONLY your message — no section headers, control tags, restated objectives, or code "
+    "fences; do not write your own name or a speaker label. This is a written TEXT chat: never mention "
+    "audio or voice. Your persona notes are private stage direction — just talk."
+)
+
+
+def _append_output_discipline(head: str, cfg: dict, affective: bool = False) -> str:
     try:
         if cfg.get("output_discipline_enabled", True):
-            return (head or "").rstrip() + "\n\n" + _OUTPUT_DISCIPLINE
+            block = _OUTPUT_DISCIPLINE_AFFECTIVE if affective else _OUTPUT_DISCIPLINE
+            return (head or "").rstrip() + "\n\n" + block
     except Exception:
         pass
     return head
@@ -678,6 +699,15 @@ def build_system_head(
     _skip_expensive = is_lightweight_chat_turn(goal, reasoning_mode)
     identity = runtime_safety.load_identity().strip()
     knowledge = ""
+    # Emotional-support turn → warmth-first output-discipline (be heard first, no clinical advice-list).
+    # Trust the aspect flag select_aspect set, else detect from the goal directly.
+    _aff = bool(aspect and aspect.get("_affective_turn"))
+    if not _aff and goal:
+        try:
+            from services.personality.affect_detect import is_affective_turn
+            _aff = is_affective_turn(goal)
+        except Exception:
+            _aff = False
 
     # Lazy: full Chroma knowledge RAG only when research/search/explain keywords
     if not _skip_expensive and cfg.get("use_chroma") and goal and needs_knowledge_rag(goal):
@@ -1679,7 +1709,7 @@ def build_system_head(
         )
         if _protected_prefix_tokens > _baseline_si_cap:
             # Everything here is in the SAME unit — tokens of final head — so the arithmetic composes.
-            _footer_tokens = token_estimate(_append_output_discipline("", cfg))
+            _footer_tokens = token_estimate(_append_output_discipline("", cfg, _aff))
             # A FIXED, window-derived ceiling: what n_ctx can actually spare after the reply reserve and
             # the conversation block the caller appends. Deliberately independent of DB size — a large
             # durable_facts or workspace_context can never push the head past what the window can hold,
@@ -1707,7 +1737,7 @@ def build_system_head(
             _h = _asm if _asm.strip() else "You are Layla, a bounded AI companion and engineering agent."
             if cfg.get("custom_system_prefix"):
                 _h = _h + "\n\n" + cfg["custom_system_prefix"].strip()
-            return _append_output_discipline(_h, cfg), _m
+            return _append_output_discipline(_h, cfg, _aff), _m
 
         head, _ctx_metrics = _assemble(n_ctx)
         # ITEM 12 — post-assembly invariant. Each hard-reserved block in `_front` (the per-turn directives
@@ -1765,4 +1795,4 @@ def build_system_head(
     head = "\n\n".join(parts) if parts else "You are Layla, a bounded AI companion and engineering agent."
     if cfg.get("custom_system_prefix"):
         head = head + "\n\n" + cfg["custom_system_prefix"].strip()
-    return _append_output_discipline(head, cfg)
+    return _append_output_discipline(head, cfg, _aff)
