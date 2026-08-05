@@ -1210,8 +1210,11 @@ async def agent(req: AgentRequest, request: Request):
                                 workspace_root=result.get("stream_workspace_root") or workspace_root,
                                 cognition_workspace_roots=result.get("cognition_workspace_roots_for_stream"),
                                 budget_retrieval_depth=str(result.get("budget_retrieval_depth") or ""),
+                                client_abort_event=client_abort,   # Stop button halts generation server-side
                             ):
                                 tok_q.put(t)
+                                if client_abort.is_set():
+                                    break
                         except Exception as ex:
                             logger.warning("stream_reason worker: %s", ex)
                         finally:
