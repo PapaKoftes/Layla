@@ -26,6 +26,7 @@ _LEVEL_IDX = {lvl: i for i, lvl in enumerate(CEFR_LEVELS)}
 # The language registry. `has_rules` = a fast offline regex path exists (German only, via german_mode);
 # every language works through the LLM path regardless. Add a language = add an entry here.
 LANGUAGES: dict[str, dict[str, Any]] = {
+    "english": {"name": "English", "native": "English", "flag": "🇬🇧", "has_rules": False},
     "german": {"name": "German", "native": "Deutsch", "flag": "🇩🇪", "has_rules": True},
     "italian": {"name": "Italian", "native": "Italiano", "flag": "🇮🇹", "has_rules": False},
     "spanish": {"name": "Spanish", "native": "Español", "flag": "🇪🇸", "has_rules": False},
