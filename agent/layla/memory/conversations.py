@@ -520,6 +520,43 @@ def fork_conversation(source_id: str, *, at_message_id: str = "", new_title: str
     return get_conversation(new_id)
 
 
+def truncate_conversation_from(conversation_id: str, message_id: str) -> int:
+    """Delete ``message_id`` and every message after it (by position) — the server side of the
+    ChatGPT-style 'edit an earlier message' flow: the client removes the edited message + everything
+    downstream, then resends the edited text as a fresh turn in the SAME conversation. Returns the
+    number of messages removed, or 0 if the conversation/message was not found (nothing deleted).
+
+    Deletes by an explicit id list (not a created_at cutoff) so messages that share a timestamp are
+    handled correctly."""
+    migrate()
+    cid = (conversation_id or "").strip()
+    mid = (message_id or "").strip()
+    if not cid or not mid:
+        return 0
+    msgs = get_conversation_messages(cid, limit=2000)
+    idx = next((i for i, m in enumerate(msgs) if m.get("id") == mid), None)
+    if idx is None:
+        return 0
+    doomed = [m.get("id") for m in msgs[idx:] if m.get("id")]
+    if not doomed:
+        return 0
+    with _conn() as db:
+        db.executemany(
+            "DELETE FROM conversation_messages WHERE conversation_id=? AND id=?",
+            [(cid, d) for d in doomed],
+        )
+        row = db.execute(
+            "SELECT COUNT(*) AS n FROM conversation_messages WHERE conversation_id=?", (cid,)
+        ).fetchone()
+        remaining = int((dict(row).get("n") if row else 0) or 0)
+        db.execute(
+            "UPDATE conversations SET message_count=?, updated_at=? WHERE id=?",
+            (remaining, utcnow().isoformat(), cid),
+        )
+        db.commit()
+    return len(doomed)
+
+
 def list_branches(conversation_id: str) -> dict | None:
     """Return this conversation's branch relationships: its parent (if it is itself a fork)
     and its direct children (branches forked from it), for a fork tree / picker."""
