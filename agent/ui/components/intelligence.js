@@ -65,7 +65,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel" role="document" style="max-width:640px">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">✦</span>' +
-        '<span class="sysdiag-title">' + _esc(T("intel.title", "intelligence")) + '</span>' +
+        '<span class="sysdiag-title">' + _esc(T("intel.title", "Intelligence")) + '</span>' +
         '<button type="button" class="sysdiag-refresh intel-refresh">' + _esc(T("intel.refresh", "refresh")) + '</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="intel-body" style="padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:70vh;overflow-y:auto"></div>' +
