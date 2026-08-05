@@ -237,3 +237,39 @@ def test_legacy_plaintext_row_reads_through_unchanged(isolated_db, monkeypatch):
     assert enc.decrypt(legacy) == legacy
     hit = next((r for r in get_recent_learnings(n=50) if r.get("id") == lid), None)
     assert hit is not None and hit["content"] == legacy
+
+
+# ── (e) degraded mode: classified-sensitive stays OUT of vector + ES even when unencrypted ──────
+
+def test_degraded_mode_keeps_classified_sensitive_out_of_vector_and_es(isolated_db, monkeypatch):
+    """RED-TEAM regression: when content is classified sensitive but the cipher is unavailable
+    (cryptography missing / unwritable keyring), it is stored plaintext — but it must STILL be kept
+    out of the vector store AND Elasticsearch (privacy over searchability). Before the fix the
+    exclusions gated on 'did encryption produce ciphertext', so degraded mode silently embedded +
+    ES-indexed the secret as plaintext. The exclusion must gate on CLASSIFICATION."""
+    _enable(monkeypatch, True)
+    # Simulate degraded mode: maybe_encrypt returns the content unchanged (no usable cipher).
+    import services.memory.memory_encryption as menc
+    monkeypatch.setattr(menc, "maybe_encrypt", lambda content, pl, cfg: content)
+
+    calls = {"embed": 0, "add_vector": 0, "es": 0}
+    import layla.memory.vector_store as vs
+    monkeypatch.setattr(vs, "embed", lambda *a, **k: (calls.__setitem__("embed", calls["embed"] + 1) or [0.0]))
+    monkeypatch.setattr(vs, "add_vector", lambda *a, **k: (calls.__setitem__("add_vector", calls["add_vector"] + 1) or "eid"))
+    try:
+        import services.retrieval.elasticsearch_bridge as esb
+        monkeypatch.setattr(esb, "index_learning", lambda *a, **k: calls.__setitem__("es", calls["es"] + 1))
+    except Exception:
+        pass
+
+    from services.memory.memory_router import save_learning
+    secret = "my api key is sk-abc123def456ghi789jkl and ssn 123-45-6789"
+    lid = save_learning(content=secret, kind="user_fact", confidence=0.9, source="user_command")
+    assert lid and lid != -1
+
+    # Stored plaintext (degraded) — but NEVER embedded and NEVER ES-indexed.
+    raw_content, pl = _raw_row(lid)
+    assert not enc.is_encrypted(raw_content), "degraded mode stores plaintext (that's the premise)"
+    assert (pl or "").lower() == "sensitive", "row must still be tagged sensitive"
+    assert calls["embed"] == 0 and calls["add_vector"] == 0, "sensitive plaintext must NOT be embedded"
+    assert calls["es"] == 0, "sensitive plaintext must NOT be indexed into Elasticsearch"
