@@ -761,9 +761,26 @@ def _collapse_repetition(text: str) -> str:
     """
     if not text or len(text) < 120 or "```" in text:
         return text
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    # Split into sentences while KEEPING the original separators. The capturing group makes
+    # re.split return [sent0, sep0, sent1, sep1, ..., sentN] so a de-dup cut can rejoin with the
+    # EXACT original whitespace. Rejoining with a plain " " instead flattened every newline —
+    # a numbered list / multi-paragraph reply collapsed onto one line and all its structure was
+    # lost the moment the done-frame content replaced the streamed text (Bug: "formatting gone").
+    _toks = re.split(r"((?<=[.!?])\s+)", text.strip())
+    parts = _toks[0::2]          # sentences
+    seps = _toks[1::2]           # the whitespace that followed each sentence (len == len(parts) - 1)
     if len(parts) < 4:
         return text
+
+    def _rejoin(n: int) -> str:
+        """Rebuild the first n sentences using their ORIGINAL separators (newlines preserved)."""
+        buf: list[str] = []
+        for i in range(n):
+            buf.append(parts[i])
+            if i < n - 1 and i < len(seps):
+                buf.append(seps[i])
+        return "".join(buf).strip()
+
     # Greeting loop: the model restates a greeting several *different* ways ("Greetings…
     # Hello! … Hi there … Hello again …"). Lexical prefixes differ, so detect repeated greeting
     # OPENERS and cut at the second one — keeping the first clean greeting + its follow-up.
@@ -771,10 +788,10 @@ def _collapse_repetition(text: str) -> str:
     greet_idxs = [i for i, p in enumerate(parts) if _greet.match(p.strip())]
     if len(greet_idxs) >= 2:
         cut = greet_idxs[1]
-        return (" ".join(parts[:cut]).strip() or parts[0].strip())
+        return (_rejoin(cut) or parts[0].strip())
     # General loop: cut at the first sentence whose 5-word normalized prefix already appeared.
     seen: set[str] = set()
-    kept: list[str] = []
+    kept_n = 0
     for p in parts:
         norm = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", "", p.lower())).strip()
         key = " ".join(norm.split()[:5])
@@ -782,8 +799,9 @@ def _collapse_repetition(text: str) -> str:
             break
         if key:
             seen.add(key)
-        kept.append(p)
-    out = " ".join(kept).strip()
+        kept_n += 1
+    # No cut → rebuild the whole thing verbatim (separators intact); a cut → keep the clean prefix.
+    out = _rejoin(kept_n)
     return out or text
 
 
@@ -911,6 +929,11 @@ _SYSTEM_PROMPT_BLEED_RE = re.compile(
     #    that says "You are Nyx, daughter of Chaos" (comma) is NOT truncated ──
     r"|You are (?:Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*[–—-]"
     r"|#{1,4}[ \t]*(?-i:REFERENCE)\b"
+    # ── situational hardware directive (hardware_detect.hardware_hint) — a weak model parrots the
+    #    injected "[Hardware: … | tier: potato] Running on constrained hardware…" tail verbatim.
+    #    Anchored on the bracket + the tier: signature so ordinary prose that says "[Hardware:" alone
+    #    is never cut; the stripper then removes it and the trailing note through end of reply. ──
+    r"|\[Hardware:[^\]\n]{0,160}\btier:\s*\w+\]"
     r"|(?:^|\n)?[ \t]*\[(?:END|End of message|Question)\]",
     re.IGNORECASE,
 )
