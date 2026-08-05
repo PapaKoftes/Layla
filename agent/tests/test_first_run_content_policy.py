@@ -123,3 +123,18 @@ def test_pd02_gate_blocks_uncensored_prompt_content_on_fresh_install():
 
     chosen = {"uncensored": True, "nsfw_allowed": True, "content_policy_chosen": True}
     assert "Refuse clearly only for genuine harm" in _parts(chosen)
+
+
+def test_installer_seeds_content_policy_chosen_false_so_fresh_install_is_gated():
+    """RED-TEAM regression: the installer's config writer seeds uncensored=nsfw_allowed=True but the
+    runtime gate treats a MISSING content_policy_chosen as grandfathered-active — so a friend-install
+    ran uncensored/NSFW BEFORE the operator ever chose. The prior tests only checked the gate with a
+    hand-seeded config, never the real installer output. generate_runtime_config MUST seed False."""
+    from install.checks import generate_runtime_config
+    from services.infrastructure.setup_engine import content_uncensored_active
+
+    cfg = generate_runtime_config({"ram_gb": 16.0, "cpu_cores": 4}, model_filename="m.gguf")
+    assert cfg.get("content_policy_chosen") is False, "installer must seed content_policy_chosen=False"
+    # ...and the real installer output must therefore be gated (uncensored NOT active until chosen),
+    # even though it seeds uncensored/nsfw on.
+    assert content_uncensored_active(cfg) is False, "fresh install must not run uncensored before the choice"
