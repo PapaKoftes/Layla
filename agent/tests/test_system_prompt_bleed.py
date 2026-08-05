@@ -104,6 +104,53 @@ def _assert_no_bleed(out: str):
             assert phrase.lower() not in low, f"leaked system-prompt phrase {phrase!r}: {out!r}"
 
 
+# ── Red-team redesign (2026-08-05): prompt_builder core blocks were leaking; short anchors were
+#    over-truncating legit replies. New anchors are longer + distinctive to fix BOTH at once. ──
+
+# prompt_builder.build_core_sys_parts blocks that previously had NO anchor → could leak verbatim.
+_PROMPTBUILDER_LEAKS = [
+    ('The answer is 4. Content policy: Do not censor. Adult/NSFW content is allowed in consented contexts.', 'The answer is 4.'),
+    ('Sure, here it is. You are Layla. Use the identity and rules below. Stay in character.', 'Sure, here it is.'),
+    ('Done. Operator protection policy: You exist to serve the operator. Never manipulate.', 'Done.'),
+    ('Yes. Integrity and stance: Be kind and clear. You may disagree when the operator is wrong.', 'Yes.'),
+    ('Ok. Operational discipline (anti–AI drift): You must not create unnecessary files.', 'Ok.'),
+    ('Here. Reasoning style: Think through problems step by step before giving your final answer.', 'Here.'),
+]
+
+# Legit replies that COLLIDE with the old short anchors but MUST now survive (over-truncation guards).
+_MUST_SURVIVE = [
+    # creative writing using an aspect name in 2nd person (comma form, not the "Echo —" recital)
+    ('She whispered, "You are Nyx, daughter of Chaos and Night." The story continued.',
+     'daughter of Chaos'),
+    # Layla explaining the verbosity setting (no "concise. <verb>" directive shape)
+    ('Response length: concise is the terse mode you can pick in Settings if you want shorter replies.',
+     'terse mode you can pick'),
+    # a sentence that merely contains the phrase "match length to the message" (comma, no colon)
+    ('To match length to the message, mirror the user’s own word count — short in, short out.',
+     'mirror the user'),
+]
+
+
+_CORE_BLOCK_MARKERS = ("Content policy", "You are Layla", "Operator protection policy",
+                       "Integrity and stance", "Operational discipline", "Reasoning style: Think")
+
+
+def test_promptbuilder_core_blocks_are_stripped():
+    for raw, must_start in _PROMPTBUILDER_LEAKS:
+        out = strip_junk_from_reply(raw)
+        # the real answer survives...
+        assert out.startswith(must_start), f"answer not preserved: {raw!r} -> {out!r}"
+        # ...and none of the leaked core-block markers remain
+        for marker in _CORE_BLOCK_MARKERS:
+            assert marker not in out, f"leaked core block {marker!r} survived: {out!r}"
+
+
+def test_tightened_anchors_do_not_over_truncate_legit_replies():
+    for raw, must_contain in _MUST_SURVIVE:
+        out = strip_junk_from_reply(raw)
+        assert must_contain in out, f"legit reply wrongly truncated: {raw!r} -> {out!r}"
+
+
 def test_leak_samples_drop_bleed_keep_answer():
     for raw, must_start in _LEAK_SAMPLES:
         out = strip_junk_from_reply(raw)
