@@ -62,6 +62,20 @@ def add_journal_entry(
     return {"ok": True, "entry": dict(row) if row else {"id": rid}}
 
 
+def delete_journal_entry(entry_id: int) -> dict[str, Any]:
+    """Delete one journal entry by id. Returns {ok, deleted} — deleted is the row count (0 if the id
+    did not exist)."""
+    migrate()
+    try:
+        eid = int(entry_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid id"}
+    with _conn() as db:
+        cur = db.execute("DELETE FROM operator_journal WHERE id=?", (eid,))
+        db.commit()
+        return {"ok": True, "deleted": int(cur.rowcount or 0)}
+
+
 def list_journal_entries(limit: int = 50, *, day: str = "") -> list[dict[str, Any]]:
     migrate()
     lim = max(1, min(int(limit or 50), 500))

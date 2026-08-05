@@ -384,7 +384,14 @@ def score_answers(
     seed_identity: Optional[dict[str, Any]] = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Return (profile_preview, identity_kv_updates). Does not persist."""
-    stats = _initial_stats(seed_identity)
+    # BUG FIX: score each submission from a FIXED neutral baseline (5), NOT from the previously-scored
+    # profile. The old code seeded `stats` from the stored stat_* values and then ADDED this run's
+    # deltas on top — so every retake ratcheted upward and, once a dim hit the clamp of 10, it stayed
+    # 10 regardless of the answers chosen (the "10 on all fields" symptom). We keep the seed only as
+    # the fallback for dimensions this submission does not touch, so a partial quiz never wipes them.
+    seed_stats = _initial_stats(seed_identity)
+    stats: Dict[StatId, int] = {sid: 5 for sid in STAT_IDS}
+    _touched: set[StatId] = set()
     prefs: dict[str, str] = {}
     # Did the operator actually answer anything that moved a stat? `stats` starts at the neutral
     # seed 5 across the board, and every stat_* used to be persisted regardless — so a quiz
@@ -408,11 +415,18 @@ def score_answers(
         scored = True
         for sid, dv in (opt.deltas or {}).items():
             try:
+                _touched.add(sid)
                 stats[sid] = _clamp_int(stats[sid] + int(dv), 1, 10, stats[sid])
             except Exception:
                 pass
         if opt.prefs:
             prefs.update({str(k): str(v) for k, v in opt.prefs.items() if k})
+
+    # Dimensions this submission did not touch keep their prior/seed value (never reset to neutral,
+    # never ratchet). Only the answered dimensions are (re)scored from the neutral baseline above.
+    for sid in STAT_IDS:
+        if sid not in _touched:
+            stats[sid] = seed_stats[sid]
 
     # Identity KV updates to store. `preview` still carries the full seeded stat block so the UI
     # can render all six sliders — the seed is a fine DISPLAY baseline, it is just not an answer,
