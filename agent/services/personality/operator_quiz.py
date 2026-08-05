@@ -341,6 +341,102 @@ QUESTIONS: List[QuizQuestion] = [
             ),
         ],
     ),
+    # ── Stages 9-11 — the companion half of the profile. The quiz above reads how you WORK; these
+    #    read how you want to be RELATED to. The prefs (support_style / warmth_preference /
+    #    connection_style) persist to the operator profile and inform Layla's tone and support. ──
+    _q(
+        qid="support_when_low",
+        stage=9,
+        prompt="When something is weighing on you and you open up to someone, what helps most?",
+        options=[
+            QuizOption(
+                id="just_listen",
+                label="Just listen and be with me — I don’t need it fixed.",
+                deltas={"social": 1, "patience": 2, "analytical": 0, "technical": 0, "creative": 0, "ambition": 0},
+                prefs={"support_style": "presence"},
+            ),
+            QuizOption(
+                id="help_solve",
+                label="Help me figure out what to actually do about it.",
+                deltas={"analytical": 2, "technical": 0, "patience": 0, "social": 0, "creative": 0, "ambition": 1},
+                prefs={"support_style": "solutions"},
+            ),
+            QuizOption(
+                id="reassure_me",
+                label="Remind me it’ll be okay and that I matter.",
+                deltas={"social": 2, "patience": 1, "analytical": 0, "technical": 0, "creative": 0, "ambition": 0},
+                prefs={"support_style": "reassurance"},
+            ),
+            QuizOption(
+                id="give_space",
+                label="Give me a little space, then check in on me later.",
+                deltas={"patience": 2, "social": 0, "analytical": 0, "technical": 0, "creative": 0, "ambition": 0},
+                prefs={"support_style": "space"},
+            ),
+        ],
+    ),
+    _q(
+        qid="how_talk_to_me",
+        stage=10,
+        prompt="How do you most like the people close to you to talk to you?",
+        options=[
+            QuizOption(
+                id="warm_personal",
+                label="Warm and personal — like someone who genuinely cares.",
+                deltas={"social": 2, "patience": 1, "analytical": 0, "technical": 0, "creative": 0, "ambition": 0},
+                prefs={"warmth_preference": "warm"},
+            ),
+            QuizOption(
+                id="direct_honest",
+                label="Direct and honest, even when it’s hard to hear.",
+                deltas={"analytical": 1, "ambition": 1, "technical": 1, "social": 0, "patience": 0, "creative": 0},
+                prefs={"warmth_preference": "direct"},
+            ),
+            QuizOption(
+                id="playful_teasing",
+                label="Playful and a little teasing.",
+                deltas={"creative": 2, "social": 1, "analytical": 0, "technical": 0, "patience": 0, "ambition": 0},
+                prefs={"warmth_preference": "playful"},
+            ),
+            QuizOption(
+                id="calm_gentle",
+                label="Calm and gentle.",
+                deltas={"patience": 2, "social": 1, "analytical": 0, "technical": 0, "creative": 0, "ambition": 0},
+                prefs={"warmth_preference": "gentle"},
+            ),
+        ],
+    ),
+    _q(
+        qid="feel_understood",
+        stage=11,
+        prompt="What makes you feel truly understood?",
+        options=[
+            QuizOption(
+                id="remembers_details",
+                label="When someone remembers the little things I care about.",
+                deltas={"social": 1, "patience": 1, "analytical": 0, "technical": 0, "creative": 0, "ambition": 0},
+                prefs={"connection_style": "remembers_details"},
+            ),
+            QuizOption(
+                id="gets_reasoning",
+                label="When someone follows my reasoning without me over-explaining.",
+                deltas={"analytical": 2, "technical": 1, "patience": 0, "social": 0, "creative": 0, "ambition": 0},
+                prefs={"connection_style": "gets_reasoning"},
+            ),
+            QuizOption(
+                id="notices_feelings",
+                label="When someone notices how I’m actually feeling.",
+                deltas={"social": 2, "patience": 1, "analytical": 0, "technical": 0, "creative": 0, "ambition": 0},
+                prefs={"connection_style": "notices_feelings"},
+            ),
+            QuizOption(
+                id="challenges_me",
+                label="When someone challenges me to be better.",
+                deltas={"ambition": 2, "analytical": 1, "technical": 0, "social": 0, "patience": 0, "creative": 0},
+                prefs={"connection_style": "challenges_me"},
+            ),
+        ],
+    ),
 ]
 
 
