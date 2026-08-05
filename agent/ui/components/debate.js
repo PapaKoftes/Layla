@@ -43,6 +43,7 @@ function _build() {
     '<div class="cmdp-panel sysdiag-panel debate-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">⚖</span>' +
         '<span class="sysdiag-title">Deliberate</span><kbd class="cmdp-esc">esc</kbd></div>' +
+      '<div class="panel-hint">Pose a hard question and let several of Layla\'s aspects debate it, then synthesize an answer — slower than a single reply, but more considered.</div>' +
       '<div class="debate-body">' +
         '<div class="debate-modes"></div>' +
         '<textarea class="debate-goal" rows="2" placeholder="a question worth deliberating…"></textarea>' +

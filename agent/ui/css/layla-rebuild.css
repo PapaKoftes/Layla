@@ -824,7 +824,19 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
    Reuses the palette shell; each backend surface is one calm card, its title in
    the active aspect color. */
 .sysdiag-panel { max-height: 74vh; }
-.sysdiag-title { flex: 1; color: var(--text); font-size: var(--text-sm); letter-spacing: 0.04em; text-transform: lowercase; }
+/* One-line purpose blurb under a panel header — tells the user what the panel is for. */
+.panel-hint {
+  margin: 2px 0 10px;
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.18);
+  border-left: 2px solid var(--asp, var(--border));
+  border-radius: 0 4px 4px 0;
+}
+/* Titles carry their own sentence-case from JS (matching the sidebar that opens them); no forced lowercase. */
+.sysdiag-title { flex: 1; color: var(--text); font-size: var(--text-sm); letter-spacing: 0.04em; text-transform: none; }
 .sysdiag-refresh {
   background: transparent; border: 1px solid var(--border); color: var(--text-dim);
   border-radius: var(--radius-sm); font-size: var(--text-xs); padding: 2px 8px;
