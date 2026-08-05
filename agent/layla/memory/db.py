@@ -50,6 +50,7 @@ from layla.memory.conversations import (
     search_conversations_filtered,
     set_conversation_tags,
     suggest_conversation_tags,
+    truncate_conversation_from,
 )
 from layla.memory.db_connection import _DB_PATH, _conn
 from layla.memory.improvements import (
@@ -233,6 +234,7 @@ __all__ = [
     'append_conversation_message',
     'get_conversation_messages',
     'fork_conversation',
+    'truncate_conversation_from',
     'list_branches',
     'compare_conversations',
     'search_conversations',

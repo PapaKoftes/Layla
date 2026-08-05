@@ -451,6 +451,111 @@ export async function rememberLaylaBubble(bubble, btn) {
   }
 }
 
+// ── Edit an earlier message (ChatGPT-style): swap the bubble for an inline editor; on save,
+//    truncate the conversation from this message onward server-side, drop the downstream transcript,
+//    and resend the edited text through the normal send() pipeline so a fresh reply regenerates. ──
+function beginEditUserMessage(msgDiv, bubble, editBtn) {
+  if (!msgDiv || msgDiv.querySelector('.msg-edit-box')) return;   // already editing
+  if (window._laylaSendBusy) { try { showToast('Wait for the current reply to finish.'); } catch (_e) {} return; }
+  var original = (bubble.innerText || bubble.textContent || '').trim();
+  bubble.style.display = 'none';
+  if (editBtn) editBtn.style.display = 'none';
+
+  var box = document.createElement('div');
+  box.className = 'msg-edit-box';
+  var ta = document.createElement('textarea');
+  ta.className = 'msg-edit-textarea';
+  ta.value = original;
+  ta.rows = Math.min(12, Math.max(2, original.split('\n').length));
+  box.appendChild(ta);
+
+  var row = document.createElement('div');
+  row.className = 'msg-edit-actions';
+  var saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'msg-edit-save';
+  saveBtn.textContent = 'Save & regenerate';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'msg-edit-cancel';
+  cancelBtn.textContent = 'Cancel';
+  row.appendChild(saveBtn);
+  row.appendChild(cancelBtn);
+  box.appendChild(row);
+  msgDiv.appendChild(box);
+  ta.focus();
+  try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_e) {}
+
+  function restore() {
+    try { box.remove(); } catch (_e) {}
+    bubble.style.display = '';
+    if (editBtn) editBtn.style.display = '';
+  }
+  cancelBtn.onclick = function (e) { e.stopPropagation(); restore(); };
+  ta.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.preventDefault(); restore(); }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveBtn.click(); }
+  });
+  saveBtn.onclick = function (e) {
+    e.stopPropagation();
+    var edited = (ta.value || '').trim();
+    if (!edited) { try { showToast('Message cannot be empty.'); } catch (_x) {} return; }
+    if (window._laylaSendBusy) { try { showToast('Wait for the current reply to finish.'); } catch (_x) {} return; }
+    saveBtn.disabled = true; cancelBtn.disabled = true; saveBtn.textContent = 'Regenerating…';
+    resendEditedUserMessage(msgDiv, edited).catch(function (err) {
+      console.debug('edit resend failed', err);
+      try { showToast('Could not edit the message.'); } catch (_x) {}
+      saveBtn.disabled = false; cancelBtn.disabled = false; saveBtn.textContent = 'Save & regenerate';
+      restore();
+    });
+  };
+}
+
+async function resendEditedUserMessage(msgDiv, editedText) {
+  var chat = document.getElementById('chat');
+  if (!chat) return;
+  var cid = window.currentConversationId || '';
+
+  // Which user message is this (0-based among rendered user bubbles)? The DOM order matches the DB
+  // insertion order, so the same index selects the right persisted row to truncate from.
+  var userMsgs = Array.prototype.slice.call(chat.querySelectorAll('.msg-you'));
+  var idx = userMsgs.indexOf(msgDiv);
+
+  if (cid && idx >= 0) {
+    try {
+      var res = await fetch('/conversations/' + encodeURIComponent(cid) + '/messages?limit=2000');
+      var data = await res.json();
+      if (data && data.ok && Array.isArray(data.messages)) {
+        var dbUser = data.messages.filter(function (m) { return m.role === 'user'; });
+        var target = dbUser[idx];
+        if (target && target.id) {
+          await fetch('/conversations/' + encodeURIComponent(cid) + '/truncate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_message_id: target.id }),
+          });
+        }
+      }
+    } catch (_e) { console.debug('edit truncate skipped', _e); }
+  }
+
+  // Drop this message node and the entire transcript after it (old reply + any later turns).
+  var node = msgDiv;
+  while (node) { var next = node.nextSibling; try { chat.removeChild(node); } catch (_e) {} node = next; }
+
+  // Resend through the normal pipeline so the edited turn re-appends + a fresh reply streams.
+  var input = document.getElementById('msg-input');
+  if (input) {
+    input.value = editedText;
+    try { if (typeof window.toggleSendButton === 'function') window.toggleSendButton(); } catch (_e) {}
+  }
+  if (typeof window.send === 'function') {
+    await window.send();
+  } else if (input) {
+    try { showToast('Edited — press Send to regenerate.'); } catch (_e) {}
+  }
+}
+
 // ── Main chat message renderer ────────────────────────────────────────────────
 export function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfluenced, reasoningTreeSummary) {
   hideEmpty();
@@ -569,6 +674,21 @@ export function addMsg(role, text, aspectName, deliberated, steps, uxStates, mem
       openFactCorrectionForm(bubble, correctBtn);
     };
     label.appendChild(correctBtn);
+  }
+
+  // ── Edit button (user messages): ChatGPT-style edit + regenerate-from-here ──
+  if (role === 'you') {
+    var editBtn = document.createElement('button');
+    editBtn.className = 'msg-edit-btn';
+    editBtn.type = 'button';
+    editBtn.textContent = 'edit';
+    editBtn.title = 'Edit this message and regenerate the reply from here';
+    editBtn.setAttribute('aria-label', 'Edit this message');
+    editBtn.onclick = function (ev) {
+      ev.stopPropagation();
+      beginEditUserMessage(div, bubble, editBtn);
+    };
+    label.appendChild(editBtn);
   }
 
   div.appendChild(label);
