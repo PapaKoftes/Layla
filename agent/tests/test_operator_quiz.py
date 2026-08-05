@@ -48,3 +48,18 @@ def test_quiz_scoring_preserves_stats_already_on_file():
     assert preview["stats"]["technical"] == 9
     assert kv["stat_technical"] == "9"
 
+
+
+def test_quiz_retake_does_not_ratchet_to_all_tens():
+    """BUG regression: scoring seeded `stats` from the previously-scored profile and ADDED this
+    run's deltas, so every retake ratcheted upward until all six dims clamped at 10 ('10 on all
+    fields'). Scoring must be idempotent: the same answers, retaken with the prior result fed back
+    as the seed (what the router does), must yield the SAME stats — and not saturate to all-10."""
+    from services.personality.operator_quiz import QUESTIONS, score_answers as _score
+    answers = [{"question_id": q.id, "option_id": q.options[0].id} for q in QUESTIONS]
+    p1, kv1 = _score(answers, seed_identity=None)
+    p2, kv2 = _score(answers, seed_identity=kv1)   # retake #1 (seed = prior scored profile)
+    p3, kv3 = _score(answers, seed_identity=kv2)   # retake #2
+    assert p1["stats"] == p3["stats"], f"scores ratcheted across retakes: {p1['stats']} -> {p3['stats']}"
+    assert not all(v == 10 for v in p3["stats"].values()), "all dims saturated to 10 (the bug)"
+    assert len({v for v in p3["stats"].values()}) > 1, "a real profile must vary across dimensions"

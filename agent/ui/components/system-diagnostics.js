@@ -13,11 +13,16 @@ let _open = false;
 const SECTIONS = [
   // `pick` extracts a dot-path from the response before rendering (e.g. the governor/
   // optimizer metrics live under system_optimizer in the big /health payload).
-  { key: 'resources', title: 'resources (governor)', url: '/health', pick: 'system_optimizer.metrics' },
+  // `lazy` sections are NOT fetched on open — they hit heavy, blocking backend handlers
+  // (/health does a blocking ollama probe + double psutil CPU sample; /doctor/capabilities does a
+  // socket connect + urlopen + heavy optional-dep imports). On the single-process potato tier,
+  // firing those alongside in-flight inference stalled every request and read as "the app froze".
+  // Load them on demand instead.
+  { key: 'resources', title: 'resources (governor)', url: '/health', pick: 'system_optimizer.metrics', lazy: true },
   { key: 'cot', title: 'reasoning cost', url: '/agent/cot_stats' },
   { key: 'metrics', title: 'metrics', url: '/metrics/summary' },
   { key: 'security', title: 'security audit', url: '/metrics/security' },
-  { key: 'caps', title: 'capabilities', url: '/doctor/capabilities' },
+  { key: 'caps', title: 'capabilities', url: '/doctor/capabilities', lazy: true },
 ];
 
 function _esc(s) {
@@ -115,19 +120,36 @@ function _build() {
   if (refresh) refresh.addEventListener('click', _load);
 }
 
+async function _fetchSection(s, body) {
+  body.innerHTML = '<div class="sysdiag-muted">loading…</div>';
+  try {
+    const r = await fetch(s.url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    let data = await r.json();
+    if (s.pick) data = s.pick.split('.').reduce((o, k) => (o == null ? o : o[k]), data);
+    body.innerHTML = _renderData(data);
+  } catch (e) {
+    body.innerHTML = '<div class="sysdiag-err">unavailable — ' + _esc(e.message) + '</div>';
+  }
+}
+
 async function _load() {
   for (const s of SECTIONS) {
     const body = _root.querySelector('#sysdiag-' + s.key + ' .sysdiag-body');
     if (!body) continue;
-    try {
-      const r = await fetch(s.url, { headers: { Accept: 'application/json' } });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      let data = await r.json();
-      if (s.pick) data = s.pick.split('.').reduce((o, k) => (o == null ? o : o[k]), data);
-      body.innerHTML = _renderData(data);
-    } catch (e) {
-      body.innerHTML = '<div class="sysdiag-err">unavailable — ' + _esc(e.message) + '</div>';
+    if (s.lazy) {
+      // Don't hit the heavy handler on open — offer a Load button that fetches on demand.
+      body.innerHTML = '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sysdiag-refresh';
+      btn.textContent = 'Load (slow)';
+      btn.title = 'Fetches a heavy diagnostic; may take a moment on CPU-only hardware.';
+      btn.addEventListener('click', () => { _fetchSection(s, body); }, { once: true });
+      body.appendChild(btn);
+      continue;
     }
+    await _fetchSection(s, body);
   }
 }
 

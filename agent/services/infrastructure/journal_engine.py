@@ -29,6 +29,12 @@ def list_entries(limit: int = 50, day: str = "") -> dict[str, Any]:
     return {"ok": True, "entries": list_journal_entries(limit=limit, day=day)}
 
 
+def delete_entry(entry_id: int) -> dict[str, Any]:
+    from layla.memory.db import delete_journal_entry
+
+    return delete_journal_entry(entry_id)
+
+
 def auto_session_recap(conversation_id: str) -> dict[str, Any]:
     cid = (conversation_id or "").strip()
     if not cid:

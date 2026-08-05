@@ -26,6 +26,16 @@ def journal_daily(day: str = ""):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+@router.delete("/journal/{entry_id}")
+def journal_delete(entry_id: int):
+    try:
+        from services.infrastructure.journal_engine import delete_entry
+
+        return JSONResponse(delete_entry(entry_id))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.post("/journal")
 def journal_add(req: dict = Body(default={})):
     try:

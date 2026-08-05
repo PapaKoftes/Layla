@@ -60,6 +60,7 @@ from layla.memory.improvements import (
 )
 from layla.memory.journal import (
     add_journal_entry,
+    delete_journal_entry,
     list_journal_entries,
 )
 from layla.memory.learnings import (

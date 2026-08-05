@@ -69,6 +69,25 @@ function _build() {
   }
   _root.querySelector(".journal-refresh").addEventListener("click", _load);
   _root.querySelector(".journal-save").addEventListener("click", _add);
+  // Delegated delete: entries are re-rendered by _load, so bind once on the list container.
+  const _list = _root.querySelector(".journal-list");
+  if (_list) _list.addEventListener("click", (ev) => {
+    const btn = ev.target.closest && ev.target.closest(".journal-del");
+    if (btn) { ev.preventDefault(); _del(btn.getAttribute("data-jid")); }
+  });
+}
+
+async function _del(jid) {
+  if (!jid) return;
+  // Deletion is irreversible — confirm first.
+  if (!window.confirm("Delete this journal entry? This cannot be undone.")) return;
+  try {
+    await fetch("/journal/" + encodeURIComponent(jid), { method: "DELETE" });
+    if (window.showToast) window.showToast("Entry deleted");
+  } catch (e) {
+    if (window.showToast) window.showToast("Delete failed");
+  }
+  _load();
 }
 
 function _entriesFrom(d) {
@@ -84,9 +103,13 @@ function _load() {
     if (!entries.length) { list.innerHTML = '<div class="sysdiag-muted">no entries yet</div>'; return; }
     list.innerHTML = entries.map((e) => {
       const when = e.created_at || e.day || e.timestamp || "";
+      const jid = (e.id != null ? String(e.id) : "");
       return '<div class="journal-entry"><div class="journal-entry-head">' +
         '<span class="journal-etype">' + _esc(e.entry_type || e.type || "note") + "</span>" +
-        '<span class="journal-when">' + _esc(String(when).slice(0, 19).replace("T", " ")) + "</span></div>" +
+        '<span class="journal-when">' + _esc(String(when).slice(0, 19).replace("T", " ")) + "</span>" +
+        (jid ? '<button type="button" class="journal-del" data-jid="' + _esc(jid) +
+               '" title="Delete entry" aria-label="Delete entry">✕</button>' : "") +
+        "</div>" +
         '<div class="journal-etext">' + _esc(e.content || e.text || "") + "</div></div>";
     }).join("");
   }).catch((e) => { list.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + "</div>"; });

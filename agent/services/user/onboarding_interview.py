@@ -312,6 +312,13 @@ class OnboardingInterview:
         if not self._state:
             return {"ok": False, "error": "no_active_interview"}
 
+        # Idempotent: advance() auto-completes on the last stage AND the UI separately POSTs
+        # /onboarding/complete, so complete() ran twice — inserting the "Onboarding interview
+        # completed…" timeline event a second time (the duplicate the operator saw) and re-applying
+        # personality prefs. If we're already complete, return the existing summary with no side effects.
+        if getattr(self._state, "is_complete", False):
+            return {"ok": True, "is_complete": True, "summary": self._build_summary()}
+
         self._state.is_complete = True
         self._state.completed_at = datetime.now(timezone.utc).isoformat()
         self._state.stage = InterviewStage.COMPLETE
