@@ -40,7 +40,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel kb-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">❋</span>' +
-        '<span class="sysdiag-title">knowledge base</span>' +
+        '<span class="sysdiag-title">Knowledge base</span>' +
         '<span class="kb-count"></span>' +
         '<button type="button" class="sysdiag-refresh kb-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
