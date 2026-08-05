@@ -396,6 +396,24 @@ def select_aspect(message: str, force_aspect: str = "") -> dict:
         d["_force_aspect_miss"] = True
         return _maybe_add_nsfw_mode(d, msg_lower)
 
+    # 1b. AFFECTIVE-TURN GATE (companion-quality fix). An emotional-support message — distress, a
+    # relationship, needing to be HEARD — must reach a WARM aspect, not the coding blade. The keyword
+    # scorer below has no distress detector; worse, "write"/"help" score TOWARD Morrigan (so "help me
+    # talk to my girlfriend" was read as a write task → a draft), and a 0-score emotional turn falls
+    # to the Morrigan default whose persona forbids warmth ("Do not therapize"). Route affect to Echo
+    # (reflective, present, gently guiding) BEFORE scoring. Only in the auto path — an explicit
+    # force_aspect above still wins.
+    try:
+        from services.personality.affect_detect import is_affective_turn
+        if is_affective_turn(message):
+            for a in aspects:
+                if a.get("id") == "echo":
+                    d = dict(a)
+                    d["_affective_turn"] = True
+                    return _maybe_add_nsfw_mode(d, msg_lower)
+    except Exception:
+        pass
+
     # 2. Keyword/name trigger scoring
     scores: list[tuple[int, dict]] = []
     for a in aspects:
