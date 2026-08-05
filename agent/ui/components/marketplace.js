@@ -42,7 +42,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel mkt-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">◈</span>' +
-        '<span class="sysdiag-title">kit marketplace</span>' +
+        '<span class="sysdiag-title">Kit marketplace</span>' +
         '<button type="button" class="sysdiag-refresh mkt-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="mkt-body"></div>' +

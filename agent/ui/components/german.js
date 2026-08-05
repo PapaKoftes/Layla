@@ -48,7 +48,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel german-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">DE</span>' +
-        '<span class="sysdiag-title">german</span>' +
+        '<span class="sysdiag-title">German</span>' +
         '<label class="german-level">level ' +
           '<select class="german-level-sel">' + _LEVELS.map((l) => '<option>' + l + '</option>').join('') + '</select>' +
         '</label>' +

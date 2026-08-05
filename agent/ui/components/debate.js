@@ -42,7 +42,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel debate-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">⚖</span>' +
-        '<span class="sysdiag-title">deliberate</span><kbd class="cmdp-esc">esc</kbd></div>' +
+        '<span class="sysdiag-title">Deliberate</span><kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="debate-body">' +
         '<div class="debate-modes"></div>' +
         '<textarea class="debate-goal" rows="2" placeholder="a question worth deliberating…"></textarea>' +

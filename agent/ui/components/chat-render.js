@@ -358,19 +358,20 @@ export function renderPromptTilesAndEmptyState() {
 
   return '<div class="sigil">∴</div><div class="hint">she is waiting</div>' +
     welcomeBlock +
+    // A balanced starting set (companion + capable assistant, not an IDE): six tiles instead of the
+    // old eight (four of which were coding). Monochrome sigils only — the mixed 🔬🔧🧪 emoji clashed
+    // with the app's glyph language.
     '<div class="prompt-tiles" id="prompt-tiles">' +
       '<button class="prompt-tile" onclick="fillPrompt(\'Explain how \')"><span class="tile-icon">✦</span><span class="tile-text">Explain something</span></button>' +
-      '<button class="prompt-tile" onclick="fillPrompt(\'Write Python code to \')"><span class="tile-icon">⚔</span><span class="tile-text">Write code for me</span></button>' +
-      '<button class="prompt-tile" onclick="fillPrompt(\'Research and summarize: \')"><span class="tile-icon">🔬</span><span class="tile-text">Research a topic</span></button>' +
-      '<button class="prompt-tile" onclick="fillPrompt(\'Help me debug this error: \')"><span class="tile-icon">🔧</span><span class="tile-text">Debug an error</span></button>' +
-      '<button class="prompt-tile" onclick="fillPrompt(\'Summarize this text: \')"><span class="tile-icon">◎</span><span class="tile-text">Summarize text</span></button>' +
-      '<button class="prompt-tile" onclick="fillPrompt(\'What should I do about \')"><span class="tile-icon">⌖</span><span class="tile-text">Get advice</span></button>' +
-      '<button class="prompt-tile" onclick="fillPrompt(\'Refactor this code: \')"><span class="tile-icon">⚔</span><span class="tile-text">Refactor</span></button>' +
-      '<button class="prompt-tile" onclick="fillPrompt(\'Add tests for \')"><span class="tile-icon">🧪</span><span class="tile-text">Add tests</span></button>' +
+      '<button class="prompt-tile" onclick="fillPrompt(\'I want to talk through \')"><span class="tile-icon">◍</span><span class="tile-text">Talk it through</span></button>' +
+      '<button class="prompt-tile" onclick="fillPrompt(\'Research and summarize: \')"><span class="tile-icon">◈</span><span class="tile-text">Research a topic</span></button>' +
+      '<button class="prompt-tile" onclick="fillPrompt(\'Write code to \')"><span class="tile-icon">⚔</span><span class="tile-text">Write or fix code</span></button>' +
+      '<button class="prompt-tile" onclick="fillPrompt(\'Summarize this: \')"><span class="tile-icon">◎</span><span class="tile-text">Summarize text</span></button>' +
+      '<button class="prompt-tile" onclick="fillPrompt(\'Help me plan \')"><span class="tile-icon">⊛</span><span class="tile-text">Plan something</span></button>' +
     '</div>' +
     '<div class="try-this-chips" style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">' +
-      '<button class="try-this-chip" onclick="fillPrompt(\'Explain quantum entanglement\')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Explain quantum entanglement</button>' +
-      '<button class="try-this-chip" onclick="fillPrompt(\'Write a Python hello world\')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Write a Python hello world</button>' +
+      '<button class="try-this-chip" onclick="fillPrompt(\'Explain a tricky idea in simple terms\')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Explain a tricky idea simply</button>' +
+      '<button class="try-this-chip" onclick="fillPrompt(\'Help me write a message to \')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Help me write a message</button>' +
     '</div>' +
     '<div id="layla-capabilities-ref" style="margin-top:18px;max-width:520px;text-align:left">' +
       '<details style="font-size:0.66rem;color:var(--text-dim)">' +

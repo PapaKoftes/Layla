@@ -44,7 +44,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel mkt-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">⟳</span>' +
-        '<span class="sysdiag-title">macros / workflows</span>' +
+        '<span class="sysdiag-title">Macros / workflows</span>' +
         '<button type="button" class="sysdiag-refresh mac-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="mac-body"></div>' +

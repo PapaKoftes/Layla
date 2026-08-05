@@ -40,7 +40,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel atasks-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">⟳</span>' +
-        '<span class="sysdiag-title">background tasks</span>' +
+        '<span class="sysdiag-title">Background tasks</span>' +
         '<button type="button" class="sysdiag-refresh atasks-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="atasks-create"><input type="text" class="atasks-goal" placeholder="run in background…" />' +
