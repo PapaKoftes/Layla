@@ -259,10 +259,11 @@ def _handle_clear(confirmed: bool) -> MemoryCommandResult:
             ),
         )
     try:
-        from layla.memory.db import _conn
-        conn = _conn()
-        deleted = conn.execute("DELETE FROM learnings").rowcount
-        conn.commit()
+        # Route through clear_all_learnings so the vectors are wiped too — a raw DELETE FROM learnings
+        # left the vector store intact, and recall (which reads content from vector metadata) then
+        # resurrected the "cleared" memories verbatim. A clear must be a TRUE wipe.
+        from layla.memory.learnings import clear_all_learnings
+        deleted = clear_all_learnings()
         return MemoryCommandResult(
             is_command=True, command="clear", items_affected=deleted,
             response=f"Cleared {deleted} memories. Fresh start.",
