@@ -31,10 +31,21 @@ def test_second_person_persona_bleed_is_cut():
 
 
 def test_all_aspect_names_anchor_the_cut():
+    # The persona recital that actually leaks uses the "You are <Aspect> —" DASH template (see the real
+    # capture above). The anchor is tightened to that form so creative writing that says "You are Nyx,
+    # daughter of Chaos" (COMMA) is NOT truncated (see test_creative_second_person_survives). Every
+    # aspect name must still anchor the cut in the recital (dash) form.
     for name in ("Morrigan", "Nyx", "Echo", "Eris", "Cassandra", "Lilith"):
-        out = strip_junk_from_reply(f"Here is the real answer. You are {name}, the blade. Do X.")
+        out = strip_junk_from_reply(f"Here is the real answer. You are {name} — the blade of Layla. Do X.")
         assert f"You are {name}" not in out
         assert "Here is the real answer." in out
+
+
+def test_creative_second_person_survives():
+    # Corrected contract: an aspect name in 2nd person with a COMMA (creative writing, not a recital)
+    # must survive — the old bare anchor truncated it (red-team over-truncation finding).
+    out = strip_junk_from_reply('She smiled. "You are Nyx, daughter of Chaos and Night," he said.')
+    assert "daughter of Chaos" in out
 
 
 def test_legitimate_you_are_is_not_cut():

@@ -867,33 +867,49 @@ def _strip_reasoning_traces(t: str) -> str:
 # '### REFERENCE' is unambiguous scaffold, while a legit title-case '## References' section survives.
 # Keep these anchors in sync with services/prompts/system_head_builder.py (Output-discipline block +
 # per-aspect 'Reply as … only' anchor).
+# Anchors are DISTINCTIVE verbatim system-prompt phrases (full block openers, not short fragments).
+# Redesign rationale (red-team 2026-08-05): the two failure modes of this stripper — MISSING blocks
+# (a leak slips through) and OVER-TRUNCATION (a legit reply matching a short anchor is cut to nothing)
+# — are the SAME root cause: anchors that were too short. The fix is longer, more specific anchors:
+# distinctive enough that they never occur in genuine prose, complete enough to cover every core
+# block. Each anchor below is chosen so a legit reply cannot plausibly contain it:
+#   • "Match length to the message:" keeps the COLON (system text) so "…match length to the message,
+#     mirror…" (legit) survives; the recital "Match length to the message: a short…" is cut.
+#   • the length directive requires the "concise. <verb>" shape so "Response length: concise is the
+#     terse mode" (legit explainer) survives; "Response length: concise. terse." (leak) is cut.
+#   • the aspect recital requires the "You are Echo —" DASH form (system template) so creative writing
+#     "You are Nyx, daughter of Chaos" (comma) survives; the persona recital is cut.
+# Sources: system_head_builder.py (output-discipline), prompt_builder.py (core blocks), aspect_behavior.py
+# (length), familiarity.py (familiarity line). Keep in sync with those.
 _SYSTEM_PROMPT_BLEED_RE = re.compile(
+    # ── output-discipline block (system_head_builder) ──
     r"Reply with ONLY your message to the user"
     r"|This is a written TEXT chat"
     r"|never mention audio, voice"
     r"|No theatrical or roleplay opening"
     r"|(?:persona and style notes are )?private stage direction"
-    r"|Match length to the message"
-    # A weak 3B under the aspect-behavior block sometimes parrots its own length directive verbatim —
-    # "Response length: concise. terse." / "Be terse: no preamble …" leaked as a tail on a real
-    # (incl. Spanish) reply (E2E finding, 2026-08-04). The answer always precedes it; cut from here.
-    # Keep in sync with services/personality/aspect_behavior.py:64/69/73.
-    r"|Response length:\s*(?:concise|balanced|thorough)\b"
+    r"|Match length to the message:"                        # colon = system text (not legit prose)
+    r"|Do not output labels or repeat instructions"
+    # ── core instruction blocks (prompt_builder.build_core_sys_parts) — the red-team-found gap ──
+    r"|You are Layla\. Use the identity and rules below"
+    r"|Content policy: Do not censor"                        # the sensitive NSFW/anti-refusal block
+    r"|Operator protection policy: You exist to serve"
+    r"|Integrity and stance: Be kind and clear"
+    r"|Operational discipline \(anti[–—-]AI drift\)"
+    r"|Multi-agent discipline \(single pass\)"
+    r"|Reasoning style: Think through problems step by step"
+    # ── aspect-behavior length directive (tightened: needs the "concise. <verb>" directive shape) ──
+    r"|Response length:\s*(?:concise|balanced|thorough)\.\s*(?:Lead with|Cover|Explain|Be terse|terse\b)"
     r"|Be terse: no preamble"
-    # The familiarity context line (services/personality/familiarity.py) is a PRIVATE 2nd-person note
-    # to Layla about how well she knows the operator — "You have N of M of this operator's stated
-    # preferences on file … how well you know them, not what you can do." A 3B parroted it as a tail on
-    # a factual recall reply (E2E finding, 2026-08-04). Verbatim system text; cut from the earliest anchor.
+    # ── familiarity context line (familiarity.py) — private 2nd-person note to Layla ──
     r"|You have \d+ of \d+ of this operator"
     r"|stated preferences on file"
     r"|how well you know them, not what you can do"
-    r"|Do not output labels or repeat instructions"
+    # ── per-aspect "Reply as … only" anchor ──
     r"|Reply as (?:her|him|them|only|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith|Layla)\b[^.\n]*\bonly\b"
-    # A 3B under an aspect persona sometimes RECITES its own persona in the second person instead of
-    # embodying it — "You are Echo — Layla's continuity facet. Your response is reflective, gently
-    # guiding …" leaked verbatim into a real companion reply (E2E finding, 2026-08-01). A companion
-    # never says "You are <her own facet>" about herself: the earliest such anchor is bleed; cut it.
-    r"|You are (?:Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b"
+    # ── aspect persona recital: tightened to the "You are Echo —" DASH template so creative writing
+    #    that says "You are Nyx, daughter of Chaos" (comma) is NOT truncated ──
+    r"|You are (?:Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*[–—-]"
     r"|#{1,4}[ \t]*(?-i:REFERENCE)\b"
     r"|(?:^|\n)?[ \t]*\[(?:END|End of message|Question)\]",
     re.IGNORECASE,
