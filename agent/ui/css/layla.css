@@ -1396,8 +1396,8 @@ body.overlay-scroll-lock {
 
   /* ── Chat rail (conversations) ── */
   .chat-rail {
-    width: 200px;
-    min-width: 168px;
+    width: 264px;          /* widened from 200px so conversation titles have room (operator request) */
+    min-width: 220px;
     border-right: 1px solid var(--border);
     background: var(--bg2);
     display: flex;
@@ -2763,7 +2763,9 @@ body.overlay-scroll-lock {
   /* Title clamps to 2 lines (the comment here used to say 2 while the rule clamped 3 — they agree now).
      overflow-wrap:anywhere, NOT word-break:break-word: break only when a word cannot fit at all,
      rather than chopping ordinary words mid-title. */
-  .session-item .sess-title { display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.4; overflow-wrap:anywhere; max-width:100%; min-width:0; }
+  /* Title wraps to as many lines as the name needs (dynamic item height) instead of clamping to 2
+     lines + ellipsis — operator wants the full chat name shown, word-wrapped. */
+  .session-item .sess-title { display:block; white-space:normal; overflow-wrap:anywhere; word-break:normal; line-height:1.4; max-width:100%; min-width:0; }
   .session-item .sess-date { font-size:0.62rem; opacity:0.7; white-space:nowrap; flex-shrink:0; margin-top:1px; }
   .session-item .sess-del { background:none; border:none; color:var(--text-dim); cursor:pointer; opacity:0; font-size:0.8rem; padding:0 2px; flex-shrink:0; }
   .session-item:hover .sess-del { opacity:1; }

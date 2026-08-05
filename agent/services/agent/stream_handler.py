@@ -57,9 +57,14 @@ def stream_reason(
     budget_retrieval_depth: str = "",
     tool_free: bool = False,
     sampling: dict | None = None,
+    client_abort_event=None,
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
+
+    ``client_abort_event`` (threading.Event): when the user clicks Stop, the token loop breaks so the
+    model stops generating server-side. Without it, Stop only aborted the client fetch (UI stopped)
+    while the model ran to EOS, holding the single generation lock and blocking the next turn.
 
     ``tool_free`` says this turn ran no tools and needs none, so multi-aspect deliberation may
     replace the answer without discarding tool results. It defaults False because this generator
@@ -99,6 +104,7 @@ def stream_reason(
             cognition_workspace_roots=cognition_workspace_roots,
             tool_free=tool_free,
             sampling=sampling,
+            client_abort_event=client_abort_event,
         )
     finally:
         set_model_override(None)
@@ -119,6 +125,7 @@ def _stream_reason_body(
     cognition_workspace_roots: list[str] | None = None,
     tool_free: bool = False,
     sampling: dict | None = None,
+    client_abort_event=None,
 ):
     """Inner generator: prompt + streaming tokens (model override set by stream_reason)."""
     import orchestrator
@@ -290,6 +297,7 @@ def _stream_reason_body(
             goal=goal, active_aspect=active_aspect, context=context,
             head=head, convo_block=convo_block,
             temperature=temperature, max_tok=max_tok, stop=stop,
+            client_abort_event=client_abort_event,
         )
         return
 
@@ -317,6 +325,10 @@ def _stream_reason_body(
     # unambiguously scaffold, whereas a natural '## Context' heading is title-case.
     _PROMPT_ECHO_MIDLINE_RE = re.compile(r"#{1,3}[ \t]*(?:SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b")
     for token in gen:
+        # Stop button: the user asked to halt — stop pulling tokens so the model stops generating
+        # (frees the single generation lock immediately instead of running to EOS).
+        if client_abort_event is not None and client_abort_event.is_set():
+            break
         buffer += token
         if any(s in buffer for s in stop):
             break
@@ -376,6 +388,7 @@ def _stream_deliberation(
     temperature: float,
     max_tok: int,
     stop: list,
+    client_abort_event=None,
 ):
     """Run one multi-POV deliberation pass and yield (trace-meta, then reply).
 
@@ -414,6 +427,8 @@ def _stream_deliberation(
         for token in run_completion(
             prompt, max_tokens=delib_max, temperature=temperature, stream=True, stop=stop
         ):
+            if client_abort_event is not None and client_abort_event.is_set():
+                break  # Stop button: halt the deliberation-concluder stream too.
             raw_parts.append(token)
             if any(s in "".join(raw_parts[-4:]) for s in stop):
                 break
