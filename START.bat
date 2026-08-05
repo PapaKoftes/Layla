@@ -20,9 +20,13 @@ if errorlevel 1 (
     echo.
     echo  -----------------------------------------------
     echo   No model found.
-    echo   Open MODELS.md to choose and download one.
-    echo   Then update agent\runtime_config.json with
-    echo   the filename and run START.bat again.
+    echo   Download one now (hardware-matched, no editing):
+    echo.
+    echo       .venv\Scripts\python.exe agent\install\provision_model.py
+    echo.
+    echo   Then run START.bat again. (To pick manually instead,
+    echo   see MODELS.md and set the filename in
+    echo   agent\runtime_config.json.)
     echo  -----------------------------------------------
     echo.
     pause
