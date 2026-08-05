@@ -122,9 +122,18 @@ def save_learning(
     tags_s = (tags or "").strip()[:500]
     # Encrypt at rest for sensitive content (BL-020). content_hash above stays plaintext so dedup
     # is unaffected; `stored_content` is what actually lands in the row (+ the FTS trigger).
+    # `_classified_sensitive` = the content was *classified* sensitive (gates the vector/ES/consistency
+    # exclusions); `_sensitive` = encryption actually produced ciphertext. RED-TEAM fix: the exclusions
+    # MUST key on classification, not on encryption success — otherwise, in degraded mode (cipher
+    # unavailable: cryptography missing / unwritable keyring), a classified secret is stored plaintext
+    # (_sensitive=False) and was then EMBEDDED into the vector store + INDEXED into Elasticsearch as
+    # plaintext, defeating the whole at-rest protection. Keep it out of the searchable indexes even
+    # when we could not encrypt it (privacy over searchability). The one residual: the FTS trigger
+    # indexes the `content` column, which is plaintext in degraded mode — documented, warned once.
+    _classified_sensitive = str(privacy_level or "").lower() == "sensitive"
     stored_content = content
     _sensitive = False
-    if str(privacy_level or "").lower() == "sensitive":
+    if _classified_sensitive:
         try:
             import runtime_safety
             from services.memory.memory_encryption import maybe_encrypt
@@ -179,8 +188,9 @@ def save_learning(
         rid = cur.lastrowid
         if rid and int(rid) > 0:
             # P1-9: dual-write consistency — if no embedding_id yet, try ChromaDB write now.
-            # BL-020: never embed sensitive plaintext (the vector would leak its meaning).
-            if not embedding_id and not _sensitive:
+            # BL-020: never embed classified-sensitive content (the vector leaks its meaning) —
+            # gate on classification, not encryption success, so degraded mode can't slip it in.
+            if not embedding_id and not _classified_sensitive:
                 try:
                     from layla.memory.vector_store import add_vector, embed
                     vec = embed(content)
@@ -229,7 +239,7 @@ def save_learning(
                         db.commit()
                 except Exception:
                     pass
-            if not _sensitive:  # BL-020: keep sensitive plaintext out of the Elasticsearch index
+            if not _classified_sensitive:  # BL-020: keep classified-sensitive content out of Elasticsearch (even if unencrypted)
                 try:
                     import runtime_safety
                     from services.retrieval.elasticsearch_bridge import index_learning
@@ -271,8 +281,8 @@ def save_learning(
             except Exception:
                 pass
         # Memory self-consistency guard: flag (don't block) if this new learning likely
-        # contradicts a stored one, for later reconcile. Non-blocking; skip sensitive plaintext.
-        if rid and content and not _sensitive:
+        # contradicts a stored one, for later reconcile. Non-blocking; skip classified-sensitive.
+        if rid and content and not _classified_sensitive:
             try:
                 import threading
                 def _consistency():
@@ -566,6 +576,35 @@ def delete_learnings_by_id(ids: list) -> None:
             delete_vectors_by_ids(emb_ids)
         except Exception:
             pass
+
+
+def clear_all_learnings() -> int:
+    """Delete ALL learnings from the SQL table AND their vectors, so 'memory clear' is a TRUE wipe.
+
+    Without the vector delete, retrieval (search_memories_full reads content straight from the vector
+    store's metadata) resurrects supposedly-cleared memories verbatim — the durable 'forget everything'
+    was a lie for every store except SQL. Returns the number of SQL rows deleted. Best-effort on the
+    vector store (never lets a vector-store hiccup abort the SQL wipe)."""
+    migrate()
+    with _conn() as db:
+        try:
+            rows = db.execute("SELECT embedding_id FROM learnings WHERE embedding_id != ''").fetchall()
+            emb_ids = [
+                str(r[0] if isinstance(r, (tuple, list)) else r.get("embedding_id")).strip()
+                for r in rows if r
+            ]
+            emb_ids = [e for e in emb_ids if e]
+        except Exception:
+            emb_ids = []
+        deleted = db.execute("DELETE FROM learnings").rowcount
+        db.commit()
+    if emb_ids:
+        try:
+            from layla.memory.vector_store import delete_vectors_by_ids
+            delete_vectors_by_ids(emb_ids)
+        except Exception:
+            pass
+    return deleted
 
 
 def get_learnings_due_for_review(limit: int = 10) -> list[dict]:
