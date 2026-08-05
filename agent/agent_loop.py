@@ -591,6 +591,19 @@ def autonomous_run(
         logger.debug("task_context setup failed: %s", e, exc_info=True)
         _ctx_tokens = None
     try:
+        # Memory commands (remember/forget/recall) NEVER invoke the LLM — handle them BEFORE the single
+        # generation serialize lock. Under the lock a `remember:` waited behind an in-flight multi-minute
+        # chat turn and concurrent saves serialized (stress: 9/20 timeouts @ 8 concurrent). This returns
+        # the same state dict the locked early-exit produced (run_setup.check_memory_command), so the
+        # router commits it identically — it just no longer contends for the generation lock. On any
+        # hiccup we fall through to the normal locked path (unchanged behaviour). Reset via the finally.
+        try:
+            from services.infrastructure.pre_loop_setup import check_memory_command as _pre_mem
+            _mem_early = _pre_mem(goal, aspect_id=aspect_id or "")
+            if _mem_early is not None:
+                return _mem_early
+        except Exception as _mem_e:
+            logger.debug("pre-lock memory-command fast path skipped: %s", _mem_e)
         with schedule_slot(priority=priority):
             with _autonomous_run_serialize_lock(workspace_root):
                 return _autonomous_run_impl(
