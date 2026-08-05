@@ -2050,6 +2050,53 @@ body.overlay-scroll-lock {
   .msg:hover .msg-remember-btn { opacity: 1; }
   .msg-remember-btn:hover { color: var(--accent-text); border-color: var(--accent-text); }
   .msg-remember-btn:disabled { opacity: 0.4; cursor: wait; }
+  /* Edit-message affordance (user bubbles) + inline editor */
+  .msg-edit-btn {
+    margin-left: auto;
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 2px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .msg:hover .msg-edit-btn { opacity: 1; }
+  .msg-edit-btn:hover { color: var(--asp); border-color: var(--asp); }
+  .msg-edit-box { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
+  .msg-edit-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    font: inherit;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    padding: 8px 10px;
+    background: var(--bg-elev, var(--bg));
+    color: var(--text);
+    border: 1px solid var(--asp, var(--border));
+    border-radius: 6px;
+  }
+  .msg-edit-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .msg-edit-save, .msg-edit-cancel {
+    font-size: 0.7rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    transition: opacity 0.15s;
+  }
+  .msg-edit-save {
+    border-color: var(--asp, var(--accent-text));
+    color: var(--asp, var(--accent-text));
+  }
+  .msg-edit-save:hover { background: var(--asp, var(--accent-text)); color: var(--bg); }
+  .msg-edit-cancel:hover { color: var(--text); border-color: var(--text-dim); }
+  .msg-edit-save:disabled, .msg-edit-cancel:disabled { opacity: 0.5; cursor: wait; }
   .msg-correct-btn {
     margin-left: 4px;
     font-size: 0.6rem;

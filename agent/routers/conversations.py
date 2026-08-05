@@ -190,6 +190,27 @@ def fork_conversation_api(conversation_id: str, req: dict = Body(default={})):
         return JSONResponse({"ok": False, "error": "Fork failed."}, status_code=500)
 
 
+@router.post("/conversations/{conversation_id}/truncate")
+def truncate_conversation_api(conversation_id: str, req: dict = Body(default={})):
+    """Delete a message and everything after it — the server side of 'edit an earlier message'.
+    The client truncates from the edited user message, then resends the edited text as a new turn
+    in the SAME conversation. Body: {from_message_id}."""
+    body = req if isinstance(req, dict) else {}
+    mid = (body.get("from_message_id") or "").strip()
+    if not mid:
+        return JSONResponse({"ok": False, "error": "from_message_id required"}, status_code=400)
+    try:
+        from layla.memory.db import truncate_conversation_from
+
+        removed = truncate_conversation_from(conversation_id, mid)
+        if not removed:
+            return JSONResponse({"ok": False, "error": "conversation or message not found"}, status_code=404)
+        return JSONResponse({"ok": True, "removed": removed})
+    except Exception:
+        logger.exception("truncate_conversation failed")
+        return JSONResponse({"ok": False, "error": "Truncate failed."}, status_code=500)
+
+
 @router.get("/conversations/{conversation_id}/branches")
 def conversation_branches_api(conversation_id: str):
     """The fork tree around a conversation: its parent (if a fork) + its direct branches."""
