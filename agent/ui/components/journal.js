@@ -49,6 +49,7 @@ function _build() {
         '<span class="sysdiag-title">Journal</span>' +
         '<button type="button" class="sysdiag-refresh journal-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
+      '<div class="panel-hint">A private space for reflections, moods, and notes. Entries are yours to keep — Layla can reference them to understand your context over time.</div>' +
       '<div class="journal-add">' +
         '<select class="journal-type">' + _TYPES.map((t) => "<option>" + t + "</option>").join("") + "</select>" +
         '<textarea class="journal-content" rows="2" placeholder="write an entry…"></textarea>' +
