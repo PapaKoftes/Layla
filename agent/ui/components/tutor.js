@@ -45,19 +45,19 @@ function _build() {
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="german-body">' +
         '<section class="german-sec"><div class="german-sec-title tutor-checktitle">check my writing</div>' +
-          '<textarea class="german-input" rows="3" placeholder="type or paste…" spellcheck="false"></textarea>' +
-          '<div class="german-actions"><button type="button" class="german-check setup-btn primary">check</button></div>' +
+          '<textarea class="german-input" rows="3" data-i18n-placeholder="pui.tutor_text" placeholder="type or paste…" spellcheck="false"></textarea>' +
+          '<div class="german-actions"><button type="button" class="german-check setup-btn primary" data-i18n="pui.check">check</button></div>' +
           '<div class="german-result"></div></section>' +
         '<section class="german-sec"><div class="german-sec-title">flashcards <span class="german-fc-stats"></span></div>' +
           '<div class="german-fc"></div>' +
-          '<div class="german-actions"><button type="button" class="german-fc-start setup-btn">review due</button>' +
+          '<div class="german-actions"><button type="button" class="german-fc-start setup-btn" data-i18n="pui.review_due">review due</button>' +
             '<button type="button" class="tutor-fc-add setup-btn">+ add card</button></div>' +
-          '<div class="tutor-add" hidden><input type="text" class="tutor-front" placeholder="front (word/phrase)" />' +
-            '<input type="text" class="tutor-back" placeholder="back (meaning)" />' +
+          '<div class="tutor-add" hidden><input type="text" class="tutor-front" data-i18n-placeholder="pui.card_front" placeholder="front (word/phrase)" />' +
+            '<input type="text" class="tutor-back" data-i18n-placeholder="pui.card_back" placeholder="back (meaning)" />' +
             '<button type="button" class="tutor-save setup-btn primary">save</button></div></section>' +
         '<section class="german-sec"><div class="german-sec-title">find my level</div>' +
           '<div class="german-cal"></div>' +
-          '<div class="german-actions"><button type="button" class="german-cal-start setup-btn">start placement</button></div></section>' +
+          '<div class="german-actions"><button type="button" class="german-cal-start setup-btn" data-i18n="pui.start_placement">start placement</button></div></section>' +
       "</div></div>";
   document.body.appendChild(_root);
   _root.addEventListener("mousedown", (e) => { if (e.target === _root) closeTutor(); });
@@ -161,7 +161,7 @@ function _renderCard() {
     '<div class="german-card-actions">' +
       (_fc.revealed
         ? '<button type="button" data-q="1">again</button><button type="button" data-q="3">hard</button><button type="button" data-q="5">good</button>'
-        : '<button type="button" class="tutor-reveal">reveal</button>') + "</div></div>";
+        : '<button type="button" class="tutor-reveal" data-i18n="pui.reveal">reveal</button>') + "</div></div>";
   if (_fc.revealed) box.querySelectorAll("[data-q]").forEach((b) => b.addEventListener("click", () => _grade(card.id, parseInt(b.getAttribute("data-q"), 10))));
   else box.querySelector(".tutor-reveal").addEventListener("click", () => { _fc.revealed = true; _renderCard(); });
 }
@@ -182,7 +182,7 @@ async function _startCalibration() {
       '<span class="german-cal-q">how much did you understand?</span><select class="german-cal-score">' +
       [0, 1, 2, 3, 4, 5].map((n) => '<option value="' + n + '"' + (n === 3 ? " selected" : "") + ">" + n + "</option>").join("") + "</select></div>" +
       '<ul class="german-cal-sents">' + g.sentences.slice(0, 3).map((s) => "<li>" + _esc(typeof s === "string" ? s : (s.text || JSON.stringify(s))) + "</li>").join("") + "</ul></div>"
-    ).join("") + '<div class="german-actions"><button type="button" class="german-cal-submit setup-btn primary">get my level</button></div><div class="german-cal-result"></div>';
+    ).join("") + '<div class="german-actions"><button type="button" class="german-cal-submit setup-btn primary" data-i18n="pui.get_level">get my level</button></div><div class="german-cal-result"></div>';
     box.querySelector(".german-cal-submit").addEventListener("click", _submitCalibration);
   } catch (e) { box.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + "</div>"; }
 }

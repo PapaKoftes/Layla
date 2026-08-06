@@ -52,8 +52,8 @@ function _build() {
       '<div class="panel-hint">A private space for reflections, moods, and notes. Entries are yours to keep — Layla can reference them to understand your context over time.</div>' +
       '<div class="journal-add">' +
         '<select class="journal-type">' + _TYPES.map((t) => "<option>" + t + "</option>").join("") + "</select>" +
-        '<textarea class="journal-content" rows="2" placeholder="write an entry…"></textarea>' +
-        '<button type="button" class="journal-save setup-btn primary">add</button></div>' +
+        '<textarea class="journal-content" rows="2" data-i18n-placeholder="pui.journal_entry" placeholder="write an entry…"></textarea>' +
+        '<button type="button" class="journal-save setup-btn primary" data-i18n="pui.add">add</button></div>' +
       '<div class="journal-list"></div>' +
     "</div>";
   document.body.appendChild(_root);

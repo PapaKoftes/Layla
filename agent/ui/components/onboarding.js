@@ -234,7 +234,7 @@ function _renderStage() {
 
   // Input area
   html += '<div class="onboarding-input-area">';
-  html += '<textarea id="onboarding-input" class="onboarding-textarea" placeholder="Type your response..." rows="3"></textarea>';
+  html += '<textarea id="onboarding-input" class="onboarding-textarea" data-i18n-placeholder="pui.quiz_response" placeholder="Type your response..." rows="3"></textarea>';
   html += '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">';
   html += '<button type="button" class="onboarding-btn onboarding-btn-secondary" id="onboarding-skip-stage-btn">Skip this</button>';
   html += '<button type="button" class="onboarding-btn onboarding-btn-primary" id="onboarding-send-btn">Continue →</button>';

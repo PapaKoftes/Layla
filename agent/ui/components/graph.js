@@ -98,7 +98,7 @@ function _build() {
         '<button type="button" class="sysdiag-refresh graph-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="graph-qrow">' +
-        '<input type="search" class="graph-q" aria-label="Search entities" placeholder="search entities…" />' +
+        '<input type="search" class="graph-q" aria-label="Search entities" data-i18n-placeholder="pui.search_entities" placeholder="search entities…" />' +
       "</div>" +
       '<div class="graph-body" role="region" aria-live="polite" aria-label="Knowledge graph contents"></div>' +
     "</div>";

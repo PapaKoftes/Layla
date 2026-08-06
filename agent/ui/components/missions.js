@@ -56,8 +56,8 @@ function _build() {
         '<button type="button" class="sysdiag-refresh missions-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="missions-create">' +
-        '<input type="text" class="missions-goal" placeholder="new mission goal…" />' +
-        '<button type="button" class="missions-start setup-btn primary">start</button></div>' +
+        '<input type="text" class="missions-goal" data-i18n-placeholder="pui.mission_goal" placeholder="new mission goal…" />' +
+        '<button type="button" class="missions-start setup-btn primary" data-i18n="pui.start">start</button></div>' +
       '<div class="missions-board"></div>' +
     "</div>";
   document.body.appendChild(_root);
