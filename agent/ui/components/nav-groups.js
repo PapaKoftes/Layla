@@ -64,7 +64,7 @@ function _applyLocked(btn, reason) {
   const badge = _badgeOf(btn);
   const line = _reasonOf(btn);
   if (badge) {
-    badge.textContent = 'locked';
+    badge.textContent = (window.t ? window.t('nav.gate_locked') : 'locked');
     badge.hidden = false;
   }
   btn.setAttribute('data-gate-state', 'locked');
@@ -91,7 +91,7 @@ function _applyUnknown(btn, why) {
   const badge = _badgeOf(btn);
   const line = _reasonOf(btn);
   if (badge) {
-    badge.textContent = 'status unknown';
+    badge.textContent = (window.t ? window.t('nav.gate_unknown') : 'status unknown');
     badge.hidden = false;
   }
   btn.setAttribute('data-gate-state', 'unknown');
