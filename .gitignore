@@ -147,12 +147,8 @@ docs/archive/AI_HANDOFF_*.md
 
 # Extracted reference source trees (local research copies)
 integrations/claude-code-sourcemap-main/
-integrations/reference-harness/
-integrations/reference-cli/
 # Same archives sometimes extracted at repo root (zip default path)
 /claude-code-sourcemap-main/
-/reference-harness/
-/reference-cli/
 
 # Coverage (pytest-cov)
 .coverage
@@ -216,8 +212,6 @@ agent/runtime_config.json.audit-*
 # Real-eval trend output (local run history, not source)
 agent/eval/history/
 
-# Internal optional layer / emulation notes — kept on disk, excluded from the public repo
-docs/INTERNAL_NOTE.md
-docs/BRIDGE_NOTE.md
-docs/ALIGNMENT_NOTE.md
-docs/BRIDGE_NOTE.md
+
+# Local-only notes kept out of the repo
+/_private/

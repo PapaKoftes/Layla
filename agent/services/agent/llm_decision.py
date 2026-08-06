@@ -43,7 +43,7 @@ def get_tools_for_goal(
     valid_tools_all: frozenset,
 ) -> frozenset:
     """
-    Return tool names for this turn.  Applies optional tool_policy
+    Return tool names for this turn.  Applies the optional tool_policy
     (profile, tools_allow/deny, groups) then intent-based subset when
     tool_routing_enabled.
     """
