@@ -45,9 +45,9 @@ function _build() {
         '<button type="button" class="sysdiag-refresh kb-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="panel-hint">Turn text into searchable articles Layla can draw on later — paste notes, docs, or references and she can recall and cite them in future answers.</div>' +
-      '<div class="kb-build"><textarea class="kb-text" rows="2" placeholder="paste text to build an article…"></textarea>' +
-        '<div class="kb-buildrow"><input type="text" class="kb-topic" placeholder="topic (optional)" />' +
-        '<button type="button" class="kb-buildbtn setup-btn primary">build</button></div></div>' +
+      '<div class="kb-build"><textarea class="kb-text" rows="2" data-i18n-placeholder="pui.kb_paste" placeholder="paste text to build an article…"></textarea>' +
+        '<div class="kb-buildrow"><input type="text" class="kb-topic" data-i18n-placeholder="pui.kb_topic" placeholder="topic (optional)" />' +
+        '<button type="button" class="kb-buildbtn setup-btn primary" data-i18n="pui.build">build</button></div></div>' +
       '<div class="kb-body"></div>' +
     "</div>";
   document.body.appendChild(_root);

@@ -107,11 +107,11 @@ export async function refreshPlatformProjects() {
 
   html.push('<div style="margin-top:10px"><strong>Edit project context</strong></div>');
   html.push('<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">');
-  html.push('<input id="pc_name" placeholder="Project name" value="' + escapeHtml(String((ctx && ctx.project_name) || '')) + '" />');
-  html.push('<input id="pc_stage" placeholder="Lifecycle stage" value="' + escapeHtml(String((ctx && ctx.lifecycle_stage) || '')) + '" />');
-  html.push('<textarea id="pc_goals" placeholder="Goals" style="min-height:60px">' + escapeHtml(String((ctx && ctx.goals) || '')) + '</textarea>');
-  html.push('<textarea id="pc_progress" placeholder="Progress" style="min-height:50px">' + escapeHtml(String((ctx && ctx.progress) || '')) + '</textarea>');
-  html.push('<textarea id="pc_blockers" placeholder="Blockers" style="min-height:50px">' + escapeHtml(String((ctx && ctx.blockers) || '')) + '</textarea>');
+  html.push('<input id="pc_name" data-i18n-placeholder="pui.project_name" placeholder="Project name" value="' + escapeHtml(String((ctx && ctx.project_name) || '')) + '" />');
+  html.push('<input id="pc_stage" data-i18n-placeholder="pui.lifecycle_stage" placeholder="Lifecycle stage" value="' + escapeHtml(String((ctx && ctx.lifecycle_stage) || '')) + '" />');
+  html.push('<textarea id="pc_goals" data-i18n-placeholder="pui.goals" placeholder="Goals" style="min-height:60px">' + escapeHtml(String((ctx && ctx.goals) || '')) + '</textarea>');
+  html.push('<textarea id="pc_progress" data-i18n-placeholder="pui.progress" placeholder="Progress" style="min-height:50px">' + escapeHtml(String((ctx && ctx.progress) || '')) + '</textarea>');
+  html.push('<textarea id="pc_blockers" data-i18n-placeholder="pui.blockers" placeholder="Blockers" style="min-height:50px">' + escapeHtml(String((ctx && ctx.blockers) || '')) + '</textarea>');
   html.push('<button type="button" class="tab-btn" id="pc_save_btn" style="margin-top:4px">Save</button>');
   html.push('<span id="pc_save_msg" style="color:var(--text-dim);font-size:0.7rem"></span>');
   html.push('</div>');

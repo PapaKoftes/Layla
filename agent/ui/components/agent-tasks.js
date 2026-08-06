@@ -44,8 +44,8 @@ function _build() {
         '<button type="button" class="sysdiag-refresh atasks-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="panel-hint">Hand off long-running work — research, multi-step jobs — that keeps going while you chat. Start one below; results land here when it finishes.</div>' +
-      '<div class="atasks-create"><input type="text" class="atasks-goal" placeholder="run in background…" />' +
-        '<button type="button" class="atasks-start setup-btn primary">start</button></div>' +
+      '<div class="atasks-create"><input type="text" class="atasks-goal" data-i18n-placeholder="pui.tasks_goal" placeholder="run in background…" />' +
+        '<button type="button" class="atasks-start setup-btn primary" data-i18n="pui.start">start</button></div>' +
       '<div class="atasks-list"></div>' +
     "</div>";
   document.body.appendChild(_root);

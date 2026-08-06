@@ -86,14 +86,14 @@ function _render() {
     b.classList.toggle("active", b.getAttribute("data-tab") === _tab));
   const create = _root.querySelector(".plans-create");
   if (_tab === "plans") {
-    create.innerHTML = '<input type="text" class="plans-goal" placeholder="new plan goal…" />' +
-      '<button type="button" class="plans-add setup-btn primary">plan it</button>';
+    create.innerHTML = '<input type="text" class="plans-goal" data-i18n-placeholder="pui.plan_goal" placeholder="new plan goal…" />' +
+      '<button type="button" class="plans-add setup-btn primary" data-i18n="pui.plan_it">plan it</button>';
     create.querySelector(".plans-add").addEventListener("click", _createPlan);
     create.querySelector(".plans-goal").addEventListener("keydown", (e) => { if (e.key === "Enter") _createPlan(); });
     _loadPlans();
   } else {
-    create.innerHTML = '<input type="text" class="proj-name" placeholder="project name…" />' +
-      '<button type="button" class="proj-add setup-btn primary">create</button>';
+    create.innerHTML = '<input type="text" class="proj-name" data-i18n-placeholder="pui.project_name2" placeholder="project name…" />' +
+      '<button type="button" class="proj-add setup-btn primary" data-i18n="pui.create">create</button>';
     create.querySelector(".proj-add").addEventListener("click", _createProject);
     create.querySelector(".proj-name").addEventListener("keydown", (e) => { if (e.key === "Enter") _createProject(); });
     _loadProjects();

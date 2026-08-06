@@ -66,7 +66,7 @@ function _build() {
     '<div class="cmdp-panel sysdiag-panel selftest-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">✓</span>' +
         '<span class="sysdiag-title" data-i18n="nav.self_test">Self-test — proof it works</span>' +
-        '<button type="button" class="sysdiag-refresh selftest-run">run</button>' +
+        '<button type="button" class="sysdiag-refresh selftest-run" data-i18n="pui.run">run</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="selftest-list">' +
         CHECKS.map((c) =>
