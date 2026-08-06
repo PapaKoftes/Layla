@@ -1,5 +1,5 @@
 """
-Background shell sessions (optional process tool subset).
+Background shell sessions (process tool subset).
 """
 from __future__ import annotations
 

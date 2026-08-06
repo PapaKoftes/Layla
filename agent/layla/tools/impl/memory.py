@@ -66,11 +66,11 @@ def search_memories(query: str, n: int = 8) -> dict:
             return {"ok": False, "error": str(e)}
 
 def memory_search(query: str, n: int = 8) -> dict:
-    """optional alias: search long-term memory and learnings (same as search_memories)."""
+    """Alias: search long-term memory and learnings (same as search_memories)."""
     return search_memories(query, n=n)
 
 def memory_get(query: str, n: int = 5) -> dict:
-    """optional: retrieve memory snippets by semantic query."""
+    """Retrieve memory snippets by semantic query."""
     return search_memories(query, n=n)
 
 def vector_search(query: str, collection: str = "knowledge", k: int = 8) -> dict:

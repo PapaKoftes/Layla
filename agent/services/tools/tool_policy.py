@@ -1,5 +1,5 @@
 """
-optional tool governance: profile, allow/deny lists, group:* expansion.
+Tool governance: profile, allow/deny lists, group:* expansion.
 Combines with intent-based filtering from intent_detection.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ from services.tools.intent_detection import _get_tool_category, filter_tools_by_
 
 logger = logging.getLogger("layla")
 
-# internal group names -> Layla tool categories (expanded via registry)
+# Group names -> Layla tool categories (expanded via registry)
 _GROUP_TO_CATEGORIES: dict[str, tuple[str, ...]] = {
     "group:fs": ("filesystem",),
     "group:code": ("code",),
@@ -22,10 +22,10 @@ _GROUP_TO_CATEGORIES: dict[str, tuple[str, ...]] = {
     "group:automation": ("automation",),
     "group:data": ("data",),
     "group:analysis": ("analysis",),
-    # optional layer "runtime" ~= shell + run_python
+    # "runtime" ~= shell + run_python
     "group:runtime": (),
     "group:sessions": (),  # no Layla equivalent; empty
-    "group:optional": (),  # placeholder; treated as all built-ins when combined with profile
+    "group:all": (),  # placeholder; treated as all built-ins when combined with profile
 }
 
 _RUNTIME_TOOL_NAMES = frozenset({"shell", "run_python", "shell_session_start", "shell_session_manage"})
@@ -197,8 +197,8 @@ def _build_default_merged_groups(all_names: set[str], tools_dict: dict[str, Any]
             merged[gname] = frozenset(_tools_for_categories(tools_dict, cats))
         else:
             merged[gname] = frozenset()
-    # group:optional = union of common built-ins (everything except exotic plugins — use all registered)
-    merged["group:optional"] = frozenset(all_names)
+    # group:all = union of common built-ins (everything except exotic plugins — use all registered)
+    merged["group:all"] = frozenset(all_names)
     return merged
 
 

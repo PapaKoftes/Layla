@@ -27,7 +27,7 @@ if str(AGENT_DIR) not in sys.path:
 
 SKIP_DIRS = {"venv", ".venv", "__pycache__", ".git", "node_modules", "models",
              "chroma_db", "layla.egg-info", "build", "dist",
-             "fabrication_assist", "reference-cli", "reference-harness",
+             "fabrication_assist",
              "discord_bot", "integrations", "cursor-layla-mcp"}
 
 # These are optional/conditional dependencies — warn but don't fail

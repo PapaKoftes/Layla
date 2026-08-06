@@ -2,8 +2,8 @@
 Unified transport layer for Layla. Single call_layla() with config and error handling.
 Discord, Slack, Telegram use this as thin adapters.
 
-Inbound security (optional): optional allowlist + optional /pair <secret>.
-See transports/README.md and docs/ALIGNMENT_NOTE.md.
+Inbound security: optional allowlist + optional /pair <secret>.
+See transports/README.md.
 
 Security posture for transport-originated turns (Slack/Telegram/Discord):
   * They are UNTRUSTED input. ``TransportAdapter`` FORCES ``allow_write=allow_run=False``

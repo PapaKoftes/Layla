@@ -37,7 +37,7 @@ def run_tool_guards(
     guards. Counting rejections against ``tool_calls`` was the cap-misfire:
     a few disallowed/looped/duplicate decisions on a simple turn exhausted the
     work budget without ever running a tool, tripping "max tool calls"."""
-    # optional tool policy: block execution outside effective tool set
+    # Optional tool policy: block execution outside effective tool set
     if intent not in ("reason", "finish", "wakeup") and intent in valid_tools:
         from services.tools.tool_policy import tool_allowed
 

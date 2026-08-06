@@ -136,7 +136,7 @@ def structured_llm_task(
     schema_hint: str = "",
     max_tokens: int = 256,
 ) -> dict:
-    """One bounded LLM step that should return JSON (optional layer llm-task style). No file writes."""
+    """One bounded LLM step that should return JSON. No file writes."""
     import json as _json
 
     from services.llm.llm_gateway import run_completion
@@ -434,7 +434,7 @@ def mcp_operator_auth_hint() -> dict:
             "Then set mcp_client_enabled and mcp_stdio_servers (name, command, args) in runtime_config.json. "
             "Use mcp_list_mcp_tools / mcp_tools_call after the server process can start authenticated."
         ),
-        "see_also": "docs/BRIDGE_NOTE.md (MCP / OAuth row), agent/runtime_config.example.json",
+        "see_also": "agent/runtime_config.example.json",
     }
 
 def notebook_read_cells(path: str, max_cells: int = 80) -> dict:

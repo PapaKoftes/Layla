@@ -75,7 +75,7 @@ Transport turns are **untrusted input**, so the adapter is fail-closed:
 
 ---
 
-## Inbound security (optional)
+## Inbound security
 
 By default, anyone who can message the bot can reach your local Layla. For
 DM-style bots, **set an allowlist and/or pairing**:
@@ -87,8 +87,6 @@ DM-style bots, **set an allowlist and/or pairing**:
 | Strict mode | `transport_require_allowlist`: `true` | If neither allowlist nor pairing secret is set, **all inbound is denied** (catches misconfiguration). |
 
 Platforms: `telegram`, `slack`, `discord`.
-
-See docs/ALIGNMENT_NOTE.md.
 
 ## Config (optional)
 

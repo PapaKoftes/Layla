@@ -1,5 +1,5 @@
 """
-Detect repetitive tool-call patterns (optional loop detection).
+Detect repetitive tool-call patterns (loop detection).
 """
 from __future__ import annotations
 

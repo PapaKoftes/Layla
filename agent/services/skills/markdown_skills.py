@@ -44,9 +44,9 @@ def _requires_ok(meta: dict[str, Any]) -> bool:
     if req is None:
         raw_metadata = meta.get("metadata")
         if isinstance(raw_metadata, dict):
-            optional = raw_metadata.get("optional")
-            if isinstance(optional, dict):
-                req = optional.get("requires")
+            tool_requirements = raw_metadata.get("tool_requirements")
+            if isinstance(tool_requirements, dict):
+                req = tool_requirements.get("requires")
     # Normalize str/list requires to dict form for uniform handling below
     if isinstance(req, str):
         req = {"bins": [req]}

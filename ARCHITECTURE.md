@@ -82,7 +82,7 @@ Client
 
 **Slack / Telegram** (optional): `transports/` — Socket Mode Slack and Telegram polling; same `/agent` bridge as Discord. Note: transport files are referenced in docs but may not be present in all installations.
 
-**Transport inbound policy** (optional, optional): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/ALIGNMENT_NOTE.md`, `docs/BRIDGE_NOTE.md`. **Integrations sweep:** `docs/INTEGRATIONS_MODULE_SECOND_SWEEP.md`.
+**Transport inbound policy** (optional): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored).
 
 **Operator surfaces (local):** **`cursor-layla-mcp/server.py`** — MCP stdio server; `LAYLA_BASE_URL` (default `http://127.0.0.1:8000`) → `POST /agent`, `/approve`, `/pending`, etc. **`layla.py`** (repo root) — CLI via httpx to `http://localhost:8000`. Deep pass: `docs/MCP_MODULE_SECOND_SWEEP.md`.
 
@@ -95,7 +95,7 @@ Client
 
 **Structured tool args** (optional): `services/tool_args.py` validates `decision["args"]` for selected tools when `tool_args_validation_enabled`.
 
-**optional core emulation** (optional): `services/tool_policy.py` (`tools_profile`, `tools_allow`/`tools_deny`, `group:*`, `tools_by_provider`) + intent filter + pre-exec guard in `agent_loop`; `services/tool_loop_detection.py` (`push_and_evaluate(..., reasoning_mode=)`, `exact_call_key`); `services/tool_output_validator.py` (post-tool dict hygiene); per-run exact duplicate tool invocation suppression in `agent_loop`; `services/shell_sessions.py` (`shell_session_start` / `shell_session_manage`); `services/http_response_cache.py`; `services/markdown_skills.py` + repo `skills/`; `inference_fallback_urls` + non-stream retries in `inference_router.py`; `browser_persistent_profiles` in `services/browser.py`. See `docs/ALIGNMENT_NOTE.md`.
+**Optional tool-policy & hygiene layer**: `services/tool_policy.py` (`tools_profile`, `tools_allow`/`tools_deny`, `group:*`, `tools_by_provider`) + intent filter + pre-exec guard in `agent_loop`; `services/tool_loop_detection.py` (`push_and_evaluate(..., reasoning_mode=)`, `exact_call_key`); `services/tool_output_validator.py` (post-tool dict hygiene); per-run exact duplicate tool invocation suppression in `agent_loop`; `services/shell_sessions.py` (`shell_session_start` / `shell_session_manage`); `services/http_response_cache.py`; `services/markdown_skills.py` + repo `skills/`; `inference_fallback_urls` + non-stream retries in `inference_router.py`; `browser_persistent_profiles` in `services/browser.py`.
 
 **agent_loop.autonomous_run():**
 1. `runtime_safety.load_config()` — TTL-cached, hot-path safe
