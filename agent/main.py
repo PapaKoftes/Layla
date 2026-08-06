@@ -492,9 +492,20 @@ async def lifespan(app: FastAPI):
                 # 2. Model management: delayed unload in WHISPER, pre-warm in SPRINT
                 try:
                     if new_mode == ResourceMode.WHISPER and old_mode != ResourceMode.WHISPER:
-                        # Schedule delayed model unload (2 min grace period)
-                        from services.llm.llm_gateway import schedule_idle_unload
-                        _whisper_unload_timer[0] = schedule_idle_unload(delay_seconds=120)
+                        # Evict the model when the user is active ONLY if the operator opts in.
+                        # WHISPER is entered on SYSTEM-WIDE input activity (input_idle=0s), so on a
+                        # normal box the user touching the keyboard — even in another app — flipped
+                        # Layla to WHISPER and unloaded her model 2 min later, on repeat. The header
+                        # then read "No model" and every message paid a cold reload: she felt
+                        # "always down". Default OFF — keep the model warm (it fits; the governor's
+                        # CPU-cap / thread-count / process-priority levers still throttle her while
+                        # the user is busy). Set governor_unload_model_when_user_active: true only on
+                        # a box that genuinely needs the RAM back.
+                        if _cfg_gov.get("governor_unload_model_when_user_active", False):
+                            from services.llm.llm_gateway import schedule_idle_unload
+                            _whisper_unload_timer[0] = schedule_idle_unload(
+                                delay_seconds=int(_cfg_gov.get("governor_unload_grace_seconds", 120) or 120)
+                            )
                     elif new_mode == ResourceMode.SPRINT:
                         # Cancel any pending unload and pre-warm model
                         if _whisper_unload_timer[0] is not None:
