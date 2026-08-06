@@ -104,6 +104,43 @@ def caps_from_outcome_evaluation(ev: dict | None) -> PolicyCaps:
     return caps
 
 
+import re as _re
+
+# Agentic-intent words. A turn is "agentic" (real engineering) if the goal contains one of these.
+_AGENTIC_WORDS = (
+    "implement", "fix", "refactor", "debug", "build", "write", "add", "create", "run", "test",
+    "migrate", "patch", "edit", "modify", "delete", "install", "deploy", "commit", "code",
+    "script", "compile", "generate", "convert", "rename", "replace", "append", "save",
+)
+# \b prefix + \w* suffix: matches "write/writes/writing", "create/created", but NOT "add" inside
+# "ladder" (no word boundary), so an ordinary companion message is not misread as engineering.
+_AGENTIC_RE = _re.compile(r"\b(" + "|".join(_AGENTIC_WORDS) + r")\w*\b", _re.IGNORECASE)
+
+
+def caps_from_turn_intent(state: dict, cfg: dict) -> PolicyCaps:
+    """Forbid mutating tools on a plain conversational / companion turn.
+
+    The small local model sometimes proposes write_file / git_commit "engineering-shaped" tool calls
+    the user never asked for; each then raises an approval prompt — the safety gate firing on noise
+    ("she always has a random approval for a git commit and a write file"). Keep those tools off the
+    table unless the turn is genuinely agentic: the operator authorized write/run/plan, a mutating
+    tool has already legitimately run this turn, or the goal reads like an engineering task. When the
+    operator DOES ask for a write, the keyword/authorization gate lets it through and the normal
+    approval flow still applies — this only suppresses the unsolicited proposals on chat turns.
+    """
+    if not cfg.get("suppress_mutating_tools_on_chat", True):
+        return PolicyCaps()
+    if state.get("allow_write") or state.get("allow_run") or state.get("plan_mode"):
+        return PolicyCaps()
+    steps = state.get("steps") or []
+    if any(isinstance(s, dict) and str(s.get("action") or "").strip() in _MUTATING_TOOLS for s in steps):
+        return PolicyCaps()  # a mutating tool already ran this turn — the user is clearly driving work
+    goal = str(state.get("original_goal") or state.get("objective") or state.get("goal") or "")
+    if _AGENTIC_RE.search(goal):
+        return PolicyCaps()
+    return PolicyCaps(forbidden_tools=_MUTATING_TOOLS, sources=["non_agentic_turn"])
+
+
 def caps_from_cognitive_workspace(cw: dict | None) -> PolicyCaps:
     if not isinstance(cw, dict):
         return PolicyCaps()
@@ -196,6 +233,7 @@ def build_policy_caps(
     except Exception:
         pass
 
+    caps = merge_policy_caps(caps, caps_from_turn_intent(state, cfg))
     caps = merge_policy_caps(caps, caps_from_cognitive_workspace(state.get("cognitive_workspace")))
     caps = merge_policy_caps(caps, caps_from_running_outcome(state))
     caps = merge_policy_caps(caps, caps_from_personal_knowledge_graph(state, cfg))
