@@ -46,14 +46,14 @@ function _build() {
         '<button type="button" class="sysdiag-refresh ca-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="ca-form">' +
-        '<div class="ca-row"><input type="text" class="ca-id" placeholder="id (lowercase, e.g. sable)" maxlength="32" />' +
-          '<input type="text" class="ca-name" placeholder="name (e.g. Sable)" maxlength="60" /></div>' +
+        '<div class="ca-row"><input type="text" class="ca-id" data-i18n-placeholder="pui.aspect_id" placeholder="id (lowercase, e.g. sable)" maxlength="32" />' +
+          '<input type="text" class="ca-name" data-i18n-placeholder="pui.aspect_name" placeholder="name (e.g. Sable)" maxlength="60" /></div>' +
         '<div class="ca-row"><input type="text" class="ca-symbol" placeholder="sigil (e.g. ☾)" maxlength="8" />' +
           '<select class="ca-base" title="inherit behaviour/voice from"></select></div>' +
-        '<input type="text" class="ca-tagline" placeholder="tagline (optional)" maxlength="200" />' +
-        '<textarea class="ca-prompt" rows="2" placeholder="prompt hint — how she should behave as this aspect (optional)"></textarea>' +
-        '<div class="ca-row"><input type="text" class="ca-color" placeholder="accent #hex (optional)" maxlength="32" />' +
-          '<button type="button" class="ca-create setup-btn primary">create aspect</button></div>' +
+        '<input type="text" class="ca-tagline" data-i18n-placeholder="pui.aspect_tagline" placeholder="tagline (optional)" maxlength="200" />' +
+        '<textarea class="ca-prompt" rows="2" data-i18n-placeholder="pui.aspect_prompt" placeholder="prompt hint — how she should behave as this aspect (optional)"></textarea>' +
+        '<div class="ca-row"><input type="text" class="ca-color" data-i18n-placeholder="pui.aspect_accent" placeholder="accent #hex (optional)" maxlength="32" />' +
+          '<button type="button" class="ca-create setup-btn primary" data-i18n="pui.create_aspect">create aspect</button></div>' +
         '<div class="ca-note"></div>' +
       "</div>" +
       '<div class="ca-list"></div>' +
@@ -90,7 +90,7 @@ async function _load() {
       '<div class="ca-item"><span class="ca-sigil">' + _esc(c.symbol || "✦") + "</span>" +
       '<span class="ca-itemmain"><span class="ca-itemname">' + _esc(c.name || c.id) + "</span>" +
       '<span class="ca-itemsub">' + _esc(c.id) + " · inherits " + _esc(c.base_aspect || "") + (c.tagline ? " · " + _esc(c.tagline) : "") + "</span></span>" +
-      '<button type="button" class="ca-use setup-btn" data-id="' + _esc(c.id) + '" data-name="' + _esc(c.name || c.id) + '">talk as this</button>' +
+      '<button type="button" class="ca-use setup-btn" data-id="' + _esc(c.id) + '" data-name="' + _esc(c.name || c.id) + '" data-i18n="pui.talk_as">talk as this</button>' +
       '<button type="button" class="ca-del" data-id="' + _esc(c.id) + '">delete</button></div>'
     ).join("");
     // BL-301: "talk as this" is the missing switch — it makes the custom aspect the ACTIVE one, so

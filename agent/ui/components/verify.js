@@ -87,8 +87,8 @@ async function _next() {
       '<div class="verify-fact">' + _esc(_factText(_fact)) + "</div>" +
       '<div class="verify-acts"><button type="button" class="verify-yes">yes ✓</button>' +
       '<button type="button" class="verify-fix">no / correct</button></div>' +
-      '<div class="verify-correct" hidden><textarea class="verify-correction" rows="2" placeholder="the correct version…"></textarea>' +
-      '<button type="button" class="verify-savefix setup-btn primary">save correction</button></div>';
+      '<div class="verify-correct" hidden><textarea class="verify-correction" rows="2" data-i18n-placeholder="pui.verify_correct2" placeholder="the correct version…"></textarea>' +
+      '<button type="button" class="verify-savefix setup-btn primary" data-i18n="pui.save_correction">save correction</button></div>';
     body.querySelector(".verify-yes").addEventListener("click", () => _answer(true, ""));
     body.querySelector(".verify-fix").addEventListener("click", () => { body.querySelector(".verify-correct").hidden = false; body.querySelector(".verify-correction").focus(); });
     body.querySelector(".verify-savefix").addEventListener("click", () => _answer(false, (body.querySelector(".verify-correction").value || "").trim()));

@@ -56,24 +56,24 @@ function _build() {
       '<div class="german-body">' +
         '<section class="german-sec">' +
           '<div class="german-sec-title">check my german</div>' +
-          '<textarea class="german-input" rows="3" placeholder="type or paste German…" spellcheck="false"></textarea>' +
-          '<div class="german-actions"><button type="button" class="german-check setup-btn primary">check</button></div>' +
+          '<textarea class="german-input" rows="3" data-i18n-placeholder="pui.tutor_german" placeholder="type or paste German…" spellcheck="false"></textarea>' +
+          '<div class="german-actions"><button type="button" class="german-check setup-btn primary" data-i18n="pui.check">check</button></div>' +
           '<div class="german-result"></div>' +
         '</section>' +
         '<section class="german-sec">' +
           '<div class="german-sec-title">flashcards <span class="german-fc-stats"></span></div>' +
           '<div class="german-fc"></div>' +
-          '<div class="german-actions"><button type="button" class="german-fc-start setup-btn">review due</button></div>' +
+          '<div class="german-actions"><button type="button" class="german-fc-start setup-btn" data-i18n="pui.review_due">review due</button></div>' +
         '</section>' +
         '<section class="german-sec">' +
           '<div class="german-sec-title">correction history</div>' +
           '<div class="german-hist"></div>' +
-          '<div class="german-actions"><button type="button" class="german-hist-load setup-btn">show recent</button></div>' +
+          '<div class="german-actions"><button type="button" class="german-hist-load setup-btn" data-i18n="pui.show_recent">show recent</button></div>' +
         '</section>' +
         '<section class="german-sec">' +
           '<div class="german-sec-title">find my level</div>' +
           '<div class="german-cal"></div>' +
-          '<div class="german-actions"><button type="button" class="german-cal-start setup-btn">start placement</button></div>' +
+          '<div class="german-actions"><button type="button" class="german-cal-start setup-btn" data-i18n="pui.start_placement">start placement</button></div>' +
         '</section>' +
       '</div>' +
     '</div>';
@@ -114,7 +114,7 @@ async function _startCalibration() {
         '<option value="' + n + '"' + (n === 3 ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></div>' +
       '<ul class="german-cal-sents">' + g.sentences.slice(0, 3).map((s) =>
         '<li>' + _esc(typeof s === 'string' ? s : (s.text || s.sentence || JSON.stringify(s))) + '</li>').join('') + '</ul></div>'
-    ).join('') + '<div class="german-actions"><button type="button" class="german-cal-submit setup-btn primary">get my level</button></div><div class="german-cal-result"></div>';
+    ).join('') + '<div class="german-actions"><button type="button" class="german-cal-submit setup-btn primary" data-i18n="pui.get_level">get my level</button></div><div class="german-cal-result"></div>';
     box.querySelector('.german-cal-submit').addEventListener('click', _submitCalibration);
   } catch (e) {
     box.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + '</div>';
@@ -135,7 +135,7 @@ async function _submitCalibration() {
     const lvl = d.recommended_level || d.level || d.recommended || '';
     res.innerHTML = lvl
       ? '<div class="german-ok">recommended level: <strong>' + _esc(lvl) + '</strong> ' +
-        '<button type="button" class="german-cal-use setup-btn" data-lvl="' + _esc(lvl) + '">use this level</button></div>'
+        '<button type="button" class="german-cal-use setup-btn" data-lvl="' + _esc(lvl) + '" data-i18n="pui.use_level">use this level</button></div>'
       : '<div class="sysdiag-muted">' + _esc(JSON.stringify(d).slice(0, 200)) + '</div>';
     const useBtn = res.querySelector('.german-cal-use');
     if (useBtn) useBtn.addEventListener('click', () => {
@@ -222,7 +222,7 @@ function _renderCard() {
   if (!_fc.revealed) {
     box.innerHTML =
       '<div class="german-card"><div class="german-card-front">' + _esc(card.front) + '</div>' +
-      '<button type="button" class="german-reveal setup-btn">reveal</button>' +
+      '<button type="button" class="german-reveal setup-btn" data-i18n="pui.reveal">reveal</button>' +
       '<div class="german-card-count">' + (_fc.idx + 1) + ' / ' + _fc.queue.length + '</div></div>';
     box.querySelector('.german-reveal').addEventListener('click', () => { _fc.revealed = true; _renderCard(); });
   } else {

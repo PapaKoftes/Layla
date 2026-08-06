@@ -1102,9 +1102,9 @@ export function openFactCorrectionForm(bubble, btn) {
   form.innerHTML =
     '<div style="color:var(--asp);margin-bottom:6px;font-weight:600">Correct a fact</div>' +
     '<label style="display:block;margin-bottom:4px;color:var(--text-dim)">What\'s wrong (select text above or type):</label>' +
-    '<textarea class="fc-query" rows="2" style="width:100%;box-sizing:border-box;padding:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:0.72rem;resize:vertical" placeholder="The incorrect statement…"></textarea>' +
+    '<textarea class="fc-query" rows="2" style="width:100%;box-sizing:border-box;padding:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:0.72rem;resize:vertical" data-i18n-placeholder="pui.verify_incorrect" placeholder="The incorrect statement…"></textarea>' +
     '<label style="display:block;margin:6px 0 4px;color:var(--text-dim)">Correct version:</label>' +
-    '<textarea class="fc-correction" rows="2" style="width:100%;box-sizing:border-box;padding:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:0.72rem;resize:vertical" placeholder="The correct information…"></textarea>' +
+    '<textarea class="fc-correction" rows="2" style="width:100%;box-sizing:border-box;padding:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:0.72rem;resize:vertical" data-i18n-placeholder="pui.verify_correct" placeholder="The correct information…"></textarea>' +
     '<div style="display:flex;gap:6px;margin-top:8px">' +
       '<button type="button" class="fc-submit" style="padding:5px 14px;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:6px;cursor:pointer;font-family:inherit;font-size:0.68rem">Submit correction</button>' +
       '<button type="button" class="fc-cancel" style="padding:5px 14px;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:6px;cursor:pointer;font-family:inherit;font-size:0.68rem">Cancel</button>' +

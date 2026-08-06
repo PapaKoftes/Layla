@@ -46,8 +46,8 @@ function _build() {
       '<div class="panel-hint">Pose a hard question and let several of Layla\'s aspects debate it, then synthesize an answer — slower than a single reply, but more considered.</div>' +
       '<div class="debate-body">' +
         '<div class="debate-modes"></div>' +
-        '<textarea class="debate-goal" rows="2" placeholder="a question worth deliberating…"></textarea>' +
-        '<div class="debate-actions"><button type="button" class="debate-run setup-btn primary">deliberate</button>' +
+        '<textarea class="debate-goal" rows="2" data-i18n-placeholder="pui.debate_goal" placeholder="a question worth deliberating…"></textarea>' +
+        '<div class="debate-actions"><button type="button" class="debate-run setup-btn primary" data-i18n="pui.deliberate_btn">deliberate</button>' +
         '<span class="debate-note"></span></div>' +
         '<div class="debate-result"></div>' +
       "</div>" +

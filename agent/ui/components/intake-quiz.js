@@ -50,7 +50,7 @@ function _build() {
       '<div class="quiz-foot">' +
         '<button type="button" class="quiz-back sysdiag-refresh" hidden>back</button>' +
         '<span class="quiz-note"></span>' +
-        '<button type="button" class="quiz-next setup-btn primary">continue</button>' +
+        '<button type="button" class="quiz-next setup-btn primary" data-i18n="pui.continue_btn">continue</button>' +
       "</div>" +
     "</div>";
   document.body.appendChild(_root);

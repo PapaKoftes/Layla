@@ -67,7 +67,7 @@ function _build() {
       '<div class="setupwiz-foot">' +
         '<button type="button" class="setupwiz-back sysdiag-refresh" hidden>back</button>' +
         '<span class="setupwiz-note"></span>' +
-        '<button type="button" class="setupwiz-next setup-btn primary">continue</button>' +
+        '<button type="button" class="setupwiz-next setup-btn primary" data-i18n="pui.continue_btn">continue</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(_root);
@@ -111,7 +111,7 @@ function _render() {
         '<div class="sysdiag-muted setupwiz-loaderr"></div>' +
         '<div class="setupwiz-erractions">' +
           '<button type="button" class="setup-btn primary setupwiz-retry">retry</button>' +
-          '<button type="button" class="setup-btn setupwiz-skip">skip for now</button>' +
+          '<button type="button" class="setup-btn setupwiz-skip" data-i18n="pui.skip_now">skip for now</button>' +
         '</div>';
       body.querySelector('.setupwiz-loaderr').textContent =
         'Couldn’t load the setup options' + (_loadErr ? ' (' + _loadErr + ')' : '') +
@@ -270,7 +270,7 @@ function _renderInstallStep(body, back, next) {
     head = _blocked.length ? 'applied — but not everything you picked is on' : 'applied';
     foot = 'Everything else you picked is switched on.';
     actions = '<div class="setupwiz-erractions">' +
-      '<button type="button" class="setup-btn primary setupwiz-idone">done</button></div>';
+      '<button type="button" class="setup-btn primary setupwiz-idone" data-i18n="pui.done">done</button></div>';
   } else if (done) {
     head = anyUnknown ? 'some results could not be confirmed'
       : anyFail ? 'some packages did not install' : 'installed and switched on';
@@ -290,14 +290,14 @@ function _renderInstallStep(body, back, next) {
     }
     actions = '<div class="setupwiz-erractions">' +
       ((anyFail || anyUnknown) ? '<button type="button" class="setup-btn primary setupwiz-retry-inst">retry</button>' : '') +
-      '<button type="button" class="setup-btn' + ((anyFail || anyUnknown) ? '' : ' primary') + ' setupwiz-idone">done</button></div>';
+      '<button type="button" class="setup-btn' + ((anyFail || anyUnknown) ? '' : ' primary') + ' setupwiz-idone" data-i18n="pui.done">done</button></div>';
   } else {
     head = 'these features need extra packages' + (totalMb ? ' (~' + _sizeLabel(totalMb) + ' to download)' : '');
     // Say the state plainly BEFORE the install, so "skip" is an informed choice.
     foot = 'These are not switched on yet — each one turns on only when its packages install.';
     actions = '<div class="setupwiz-erractions">' +
-      '<button type="button" class="setup-btn primary setupwiz-run-inst">install now</button>' +
-      '<button type="button" class="setup-btn setupwiz-skip-inst">skip for now</button></div>';
+      '<button type="button" class="setup-btn primary setupwiz-run-inst" data-i18n="pui.install_now">install now</button>' +
+      '<button type="button" class="setup-btn setupwiz-skip-inst" data-i18n="pui.skip_now">skip for now</button></div>';
   }
 
   body.innerHTML = '<div class="setupwiz-q">' + _esc(head) + '</div>' +

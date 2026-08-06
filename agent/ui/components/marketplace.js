@@ -84,7 +84,7 @@ async function _load() {
           (feats ? '<span class="mkt-feats">' + _esc(feats) + "</span>" : "") + "</span>" +
           (on
             ? '<span class="mkt-installed">✓ installed</span>'
-            : '<button type="button" class="mkt-install setup-btn" data-id="' + _esc(k.id) + '">install</button>') +
+            : '<button type="button" class="mkt-install setup-btn" data-id="' + _esc(k.id) + '" data-i18n="pui.install">install</button>') +
           '<span class="mkt-status" data-status-for="' + _esc(k.id) + '" hidden></span>' +
           "</div>";
       }).join("")

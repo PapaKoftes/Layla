@@ -49,7 +49,7 @@ function _build() {
         '<button type="button" class="sysdiag-refresh codex-gen">generate</button>' +
         '<button type="button" class="sysdiag-refresh codex-load">load</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
-      '<div class="codex-wsrow"><input type="text" class="codex-ws" placeholder="workspace path…" /></div>' +
+      '<div class="codex-wsrow"><input type="text" class="codex-ws" data-i18n-placeholder="pui.workspace_path" placeholder="workspace path…" /></div>' +
       '<div class="codex-body"></div>' +
     "</div>";
   document.body.appendChild(_root);
