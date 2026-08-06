@@ -42,7 +42,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel ca-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">✦</span>' +
-        '<span class="sysdiag-title">Create custom aspect</span>' +
+        '<span class="sysdiag-title" data-i18n="nav.custom_aspect">Create custom aspect</span>' +
         '<button type="button" class="sysdiag-refresh ca-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="ca-form">' +

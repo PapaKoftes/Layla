@@ -51,6 +51,7 @@
     "macros": "Macros / flux",
     "background_tasks": "Tâches en arrière-plan",
     "knowledge_base": "Base de connaissances",
+    "knowledge_graph": "Graphe de connaissances",
     "journal": "Journal",
     "relationship_codex": "Codex de relation",
     "verify_learnings": "Vérifier les apprentissages",

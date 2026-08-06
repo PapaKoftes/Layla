@@ -51,6 +51,7 @@
     "macros": "Makros / Workflows",
     "background_tasks": "Hintergrundaufgaben",
     "knowledge_base": "Wissensdatenbank",
+    "knowledge_graph": "Wissensgraph",
     "journal": "Tagebuch",
     "relationship_codex": "Beziehungskodex",
     "verify_learnings": "Gelerntes prüfen",
