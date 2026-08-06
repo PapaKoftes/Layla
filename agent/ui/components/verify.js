@@ -41,7 +41,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel verify-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">✓?</span>' +
-        '<span class="sysdiag-title">Verify learnings</span>' +
+        '<span class="sysdiag-title" data-i18n="nav.verify_learnings">Verify learnings</span>' +
         '<span class="verify-stats"></span>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="verify-body"></div>' +

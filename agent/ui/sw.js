@@ -40,7 +40,7 @@
 // Escape handler + clickable "esc" chip that setup-profiles.js already had. A stale bundle would keep
 // serving the old _root-only handlers, so every one of these overlays would still trap the operator with a
 // dead esc chip — the exact bug we just fixed, looking unfixed on first load. Bump to purge atomically.
-const CACHE = "layla-ui-v40";
+const CACHE = "layla-ui-v41";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",

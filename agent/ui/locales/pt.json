@@ -51,6 +51,7 @@
     "macros": "Macros / fluxos",
     "background_tasks": "Tarefas em segundo plano",
     "knowledge_base": "Base de conhecimento",
+    "knowledge_graph": "Grafo de conhecimento",
     "journal": "Diário",
     "relationship_codex": "Códice de relacionamento",
     "verify_learnings": "Verificar aprendizados",

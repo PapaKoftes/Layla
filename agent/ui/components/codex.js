@@ -45,7 +45,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel codex-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">♡</span>' +
-        '<span class="sysdiag-title">Relationship codex</span>' +
+        '<span class="sysdiag-title" data-i18n="nav.relationship_codex">Relationship codex</span>' +
         '<button type="button" class="sysdiag-refresh codex-gen">generate</button>' +
         '<button type="button" class="sysdiag-refresh codex-load">load</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +

@@ -40,7 +40,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel atasks-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">⟳</span>' +
-        '<span class="sysdiag-title">Background tasks</span>' +
+        '<span class="sysdiag-title" data-i18n="nav.background_tasks">Background tasks</span>' +
         '<button type="button" class="sysdiag-refresh atasks-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="panel-hint">Hand off long-running work — research, multi-step jobs — that keeps going while you chat. Start one below; results land here when it finishes.</div>' +

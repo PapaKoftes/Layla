@@ -43,7 +43,7 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel quiz-panel" role="document">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">✶</span>' +
-        '<span class="sysdiag-title">Intake quiz</span>' +
+        '<span class="sysdiag-title" data-i18n="nav.intake_quiz">Intake quiz</span>' +
         '<span class="quiz-progress"></span>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="quiz-body"></div>' +
