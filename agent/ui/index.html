@@ -318,12 +318,12 @@
     </details>
     <!-- Sidebar nav: open overlay panels -->
     <nav class="sidebar-nav" aria-label="Panel shortcuts">
-      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="status"><span class="sidebar-nav-icon">◈</span> Dashboard</button>
-      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="prefs"><span class="sidebar-nav-icon">⚙</span> Settings</button>
-      <button type="button" class="sidebar-nav-btn" data-action="openModelsPanel"><span class="sidebar-nav-icon">◆</span> Models</button>
-      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="workspace"><span class="sidebar-nav-icon">▤</span> Library</button>
-      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="research"><span class="sidebar-nav-icon">⌕</span> Research</button>
-      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="artifacts"><span class="sidebar-nav-icon">⬡</span> Artifacts</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="status"><span class="sidebar-nav-icon">◈</span> <span data-i18n="nav.dashboard">Dashboard</span></button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="prefs"><span class="sidebar-nav-icon">⚙</span> <span data-i18n="nav.settings">Settings</span></button>
+      <button type="button" class="sidebar-nav-btn" data-action="openModelsPanel"><span class="sidebar-nav-icon">◆</span> <span data-i18n="nav.models">Models</span></button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="workspace"><span class="sidebar-nav-icon">▤</span> <span data-i18n="nav.library">Library</span></button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="research"><span class="sidebar-nav-icon">⌕</span> <span data-i18n="nav.research">Research</span></button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="artifacts"><span class="sidebar-nav-icon">⬡</span> <span data-i18n="nav.artifacts">Artifacts</span></button>
     </nav>
     <!-- ── Feature groups (BL-390) ────────────────────────────────────────────────────────────
          Until now these 21 panels were reachable ONLY from the command palette. The palette is a
@@ -341,26 +341,26 @@
          Gated entries carry data-gate-* and render the real reason from /setup/gate-status. -->
     <nav class="sidebar-groups" id="sidebar-groups" aria-label="All features">
       <details class="sidebar-group" id="sidebar-group-work">
-        <summary class="sidebar-nav-title">Work</summary>
-        <button type="button" class="sidebar-nav-btn" data-action="openPlans"><span class="sidebar-nav-icon">◇</span> Plans &amp; projects</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openMacros"><span class="sidebar-nav-icon">▷</span> Macros / workflows</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openAgentTasks"><span class="sidebar-nav-icon">⧗</span> Background tasks</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openKb"><span class="sidebar-nav-icon">▦</span> Knowledge base</button>
+        <summary class="sidebar-nav-title" data-i18n="nav.group_work">Work</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openPlans"><span class="sidebar-nav-icon">◇</span> <span data-i18n="nav.plans">Plans &amp; projects</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openMacros"><span class="sidebar-nav-icon">▷</span> <span data-i18n="nav.macros">Macros / workflows</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openAgentTasks"><span class="sidebar-nav-icon">⧗</span> <span data-i18n="nav.background_tasks">Background tasks</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openKb"><span class="sidebar-nav-icon">▦</span> <span data-i18n="nav.knowledge_base">Knowledge base</span></button>
       </details>
       <details class="sidebar-group" id="sidebar-group-memory">
-        <summary class="sidebar-nav-title">Memory &amp; learning</summary>
-        <button type="button" class="sidebar-nav-btn" data-action="openJournal"><span class="sidebar-nav-icon">✎</span> Journal</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openCodex"><span class="sidebar-nav-icon">❖</span> Relationship codex</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openVerify"><span class="sidebar-nav-icon">✓</span> Verify learnings</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openTutor"><span class="sidebar-nav-icon">◑</span> Language tutor</button>
+        <summary class="sidebar-nav-title" data-i18n="nav.group_memory">Memory &amp; learning</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openJournal"><span class="sidebar-nav-icon">✎</span> <span data-i18n="nav.journal">Journal</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openCodex"><span class="sidebar-nav-icon">❖</span> <span data-i18n="nav.relationship_codex">Relationship codex</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openVerify"><span class="sidebar-nav-icon">✓</span> <span data-i18n="nav.verify_learnings">Verify learnings</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openTutor"><span class="sidebar-nav-icon">◑</span> <span data-i18n="nav.language_tutor">Language tutor</span></button>
       </details>
       <details class="sidebar-group" id="sidebar-group-layla">
-        <summary class="sidebar-nav-title">Layla herself</summary>
-        <button type="button" class="sidebar-nav-btn" data-action="openIntelligence"><span class="sidebar-nav-icon">✦</span> Intelligence</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openImprovements"><span class="sidebar-nav-icon">↑</span> Improvements</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openCharacterLab"><span class="sidebar-nav-icon">⌬</span> Character Lab</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openCustomAspect"><span class="sidebar-nav-icon">✧</span> Create custom aspect</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openIntakeQuiz"><span class="sidebar-nav-icon">?</span> Intake quiz</button>
+        <summary class="sidebar-nav-title" data-i18n="nav.group_layla">Layla herself</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openIntelligence"><span class="sidebar-nav-icon">✦</span> <span data-i18n="nav.intelligence">Intelligence</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openImprovements"><span class="sidebar-nav-icon">↑</span> <span data-i18n="nav.improvements">Improvements</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openCharacterLab"><span class="sidebar-nav-icon">⌬</span> <span data-i18n="nav.character_lab">Character Lab</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openCustomAspect"><span class="sidebar-nav-icon">✧</span> <span data-i18n="nav.custom_aspect">Create custom aspect</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openIntakeQuiz"><span class="sidebar-nav-icon">?</span> <span data-i18n="nav.intake_quiz">Intake quiz</span></button>
         <!-- UNGATED, deliberately. The panel POSTs /debate -> routers/debate.py ->
              services/planning/debate_engine.py, which reads debate_max_workers, debate_max_tokens,
              debate_temperature, council_aspect_models and debate_synthesis_max_tokens — and NOT
@@ -371,16 +371,16 @@
              with two participating aspects. The panel ran with the flag off, so the lock was false and
              its remedy (add the key to auto_tune_locked_keys / disable auto_tune) was harmful on a CPU
              tier for no effect here. A panel with no gate gets no badge. -->
-        <button type="button" class="sidebar-nav-btn" data-action="openDebate"><span class="sidebar-nav-icon">⚖</span> Deliberate (aspects)</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openDebate"><span class="sidebar-nav-icon">⚖</span> <span data-i18n="nav.deliberate">Deliberate (aspects)</span></button>
       </details>
       <details class="sidebar-group" id="sidebar-group-system">
-        <summary class="sidebar-nav-title">System &amp; trust</summary>
-        <button type="button" class="sidebar-nav-btn" data-action="openSystemDiagnostics"><span class="sidebar-nav-icon">◍</span> System diagnostics</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openSelfTest"><span class="sidebar-nav-icon">◉</span> Run self-test</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openToolsHistory"><span class="sidebar-nav-icon">⟲</span> Tool history &amp; health</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openApprovals"><span class="sidebar-nav-icon">⚑</span> Approvals &amp; grants</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openMarketplace"><span class="sidebar-nav-icon">⊞</span> Kit marketplace</button>
-        <button type="button" class="sidebar-nav-btn" data-action="openSetupProfiles"><span class="sidebar-nav-icon">⚒</span> Set up / reconfigure</button>
+        <summary class="sidebar-nav-title" data-i18n="nav.group_system">System &amp; trust</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openSystemDiagnostics"><span class="sidebar-nav-icon">◍</span> <span data-i18n="nav.system_diagnostics">System diagnostics</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openSelfTest"><span class="sidebar-nav-icon">◉</span> <span data-i18n="nav.self_test">Run self-test</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openToolsHistory"><span class="sidebar-nav-icon">⟲</span> <span data-i18n="nav.tool_history">Tool history &amp; health</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openApprovals"><span class="sidebar-nav-icon">⚑</span> <span data-i18n="nav.approvals">Approvals &amp; grants</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openMarketplace"><span class="sidebar-nav-icon">⊞</span> <span data-i18n="nav.marketplace">Kit marketplace</span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openSetupProfiles"><span class="sidebar-nav-icon">⚒</span> <span data-i18n="nav.setup">Set up / reconfigure</span></button>
         <!-- GATED ON syncthing_api_key, the key this panel's own path actually reads. sync.js calls
              /sync/status, /sync/device-id, /sync/rescan and /sync/setup-guide; routers/sync.py and
              services/infrastructure/syncthing_sync.py contain ZERO references to remote_enabled — the
@@ -388,8 +388,8 @@
              "syncthing_api_key not set in runtime_config.json"} while the badge told the operator to
              rotate a tunnel token, which has a real security side effect and does not enable sync. The
              panel behind the door stated the truth and the door contradicted it. -->
-        <button type="button" class="sidebar-nav-btn nav-gated" data-action="openSync" data-gate-key="syncthing_api_key"><span class="sidebar-nav-icon">⇄</span> Sync (devices)<span class="nav-gate-badge" hidden></span></button>
-        <button type="button" class="sidebar-nav-btn" data-action="openWelcome"><span class="sidebar-nav-icon">∴</span> About Layla</button>
+        <button type="button" class="sidebar-nav-btn nav-gated" data-action="openSync" data-gate-key="syncthing_api_key"><span class="sidebar-nav-icon">⇄</span> <span data-i18n="nav.sync">Sync (devices)</span><span class="nav-gate-badge" hidden></span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openWelcome"><span class="sidebar-nav-icon">∴</span> <span data-i18n="nav.about">About Layla</span></button>
       </details>
     </nav>
     <!-- Live dashboard cards -->
@@ -542,8 +542,8 @@
   <div class="rcp-tabs" role="tablist" aria-label="Panel tabs">
       <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status" id="tab-status" aria-controls="panel-status" data-i18n="nav.dashboard">Dashboard</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs" id="tab-prefs" aria-controls="panel-prefs" data-i18n="nav.settings">Settings</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace" id="tab-workspace" aria-controls="panel-workspace">Library</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research" id="tab-research" aria-controls="panel-research">Research</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace" id="tab-workspace" aria-controls="panel-workspace" data-i18n="nav.library">Library</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research" id="tab-research" aria-controls="panel-research" data-i18n="nav.research">Research</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts" id="tab-artifacts" aria-controls="panel-artifacts" data-i18n="nav.artifacts">Artifacts</button>
     </div>
     <div class="rcp-body">
@@ -943,7 +943,7 @@
 
       <section class="rcp-page" data-rcp="workspace" role="tabpanel" aria-hidden="true" id="panel-workspace" aria-labelledby="tab-workspace">
         <div class="rcp-subtabs" role="tablist" aria-label="Workspace tools">
-          <button type="button" class="rcp-subtab active" data-rcp-sub="models">Models</button>
+          <button type="button" class="rcp-subtab active" data-rcp-sub="models" data-i18n="nav.models">Models</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="awareness" data-i18n="nav.awareness">Awareness</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="knowledge">Knowledge</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="study">Study &amp; plans</button>
