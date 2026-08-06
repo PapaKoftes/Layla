@@ -84,6 +84,28 @@ export function applyTranslations(root) {
   }
 }
 
+// Panels/overlays are built lazily by their components and appended to <body> long after the initial
+// applyTranslations(document) ran — so a [data-i18n] node minted after a language switch would keep
+// its hardcoded English default. Watch for newly-mounted subtrees and translate them on arrival, so
+// any component that tags a node with data-i18n is localized automatically, whenever it mounts.
+let _mountObserver = null;
+function _startMountObserver() {
+  if (_mountObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+  _mountObserver = new MutationObserver((records) => {
+    for (const rec of records) {
+      rec.addedNodes && rec.addedNodes.forEach((node) => {
+        if (node.nodeType !== 1) return; // elements only
+        if (node.matches && node.matches('[data-i18n],[data-i18n-placeholder],[data-i18n-aria-label],[data-i18n-title]')) {
+          applyTranslations(node.parentNode || node);
+        } else if (node.querySelector && node.querySelector('[data-i18n],[data-i18n-placeholder],[data-i18n-aria-label],[data-i18n-title]')) {
+          applyTranslations(node);
+        }
+      });
+    }
+  });
+  _mountObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 /** Switch the active language: load its catalog, set <html lang/dir>, persist, re-translate. */
 export async function setLanguage(lang, opts) {
   lang = (SUPPORTED.includes(lang) ? lang : 'en');
@@ -117,6 +139,7 @@ export async function initI18n() {
     if (SUPPORTED.includes(nav)) lang = nav;
   }
   await setLanguage(lang || 'en', { persistServer: false });
+  _startMountObserver();
 }
 
 // ── Locale-aware formatting helpers (Intl) ──────────────────────────────────

@@ -51,6 +51,7 @@
     "macros": "Macros / workflows",
     "background_tasks": "Background tasks",
     "knowledge_base": "Knowledge base",
+    "knowledge_graph": "Knowledge graph",
     "journal": "Journal",
     "relationship_codex": "Relationship codex",
     "verify_learnings": "Verify learnings",
