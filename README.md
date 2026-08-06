@@ -12,7 +12,7 @@
 
 <img src="readme-assets/hero-layla-ui.png" alt="Layla Web UI — captured from local /ui" width="920"/>
 
-<sub>PNG/GIF assets are generated from a real headless Chromium session: <code>python scripts/capture_readme_assets.py</code> · <a href="docs/media/README.md">docs/media/README.md</a></sub>
+<sub>Captured from the local Web UI (<code>/ui</code>). Regenerate with <code>python scripts/capture_readme_assets.py</code> (needs a model + <code>playwright install chromium</code>) · <a href="docs/media/README.md">docs/media/README.md</a></sub>
 
 <br/>
 

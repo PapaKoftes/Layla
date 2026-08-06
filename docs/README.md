@@ -2,7 +2,10 @@
 
 Central index for Layla’s documentation. Links are relative so they work on GitHub and in local clones.
 
-**Last updated:** 2026-07-13 | **Tests:** 3,000+ passing | **Health checks:** 12/12 green
+**Last updated:** 2026-08-06 (v1.7.0) | **Tests:** 4,400+ passing | **Health checks:** 12/12 green
+
+> Documents tagged _(internal)_ or living under `docs/archive/` are point-in-time engineering/audit
+> artifacts, not current product documentation — read the top-of-file dates before relying on them.
 
 ---
 

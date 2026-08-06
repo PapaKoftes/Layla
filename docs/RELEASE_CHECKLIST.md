@@ -2,9 +2,12 @@
 
 Run before tagging or publishing binaries/docs as “ready.” See also **`docs/PRODUCTION_CONTRACT.md`**.
 
-## Release verification (1.5.0 — 2026-07-15)
+## Release verification (latest: v1.7.0 — 2026-08-06)
 
-Verified for the `v1.5.0` tag on this session's green HEAD:
+Latest verified release: **`v1.7.0`** — full suite green (4,473 passed; one known ordering flake that
+passes in isolation), plus a reliability crash-course (crash recovery, DB integrity, migration safety,
+offline, scale) and a live-model end-to-end. The checklist below is the standing procedure; the numbers
+shown are from the most recent green HEAD.
 
 | Check | Result |
 |---|---|

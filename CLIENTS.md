@@ -5,9 +5,10 @@ Ollama APIs, so you can reach it from a terminal, your phone, or your editor —
 
 ## Terminal (CLI)
 
-Dependency-free, ships in the repo:
+Dependency-free, ships in the repo. Run it from the `agent/` directory (that's where the `clients` package lives):
 
 ```bash
+cd agent
 python -m clients.layla_cli "what changed in this repo?"   # one-shot
 python -m clients.layla_cli                                # interactive REPL
 python -m clients.layla_cli --model layla-nyx --no-stream "explain asyncio"
