@@ -9,7 +9,7 @@ This directory holds **code-derived, factual** documentation for the Layla runti
 | **`docs/system/*.md`** | **Ground truth** — behavior and structure as reflected in `agent/` source. If narrative docs disagree, **this directory wins**. |
 | **[`PROJECT_BRAIN.md`](../../PROJECT_BRAIN.md)** | **Entry point + workflow** — where to start, read order, pinned high-level facts, links into depth. |
 | **Other docs** (`docs/*.md`, [`ARCHITECTURE.md`](../../ARCHITECTURE.md), [`CONFIG_REFERENCE.md`](../CONFIG_REFERENCE.md), etc.) | **Narrative / human summaries**, audits, roadmap, onboarding — useful context but may lag code. |
-| **[`docs/MODULE_SWEEP_STATUS.md`](../MODULE_SWEEP_STATUS.md)** and **`docs/*_MODULE_SECOND_SWEEP.md`** | **Scoped subsystem exploration** — deep dives per area; keep using these for focused changes. **Do not replace** with `docs/system` alone. |
+| **`docs/MODULE_SWEEP_STATUS.md`** and **`docs/*_MODULE_SECOND_SWEEP.md`** | **Scoped subsystem exploration** — deep dives per area; keep using these for focused changes. **Do not replace** with `docs/system` alone. |
 
 ## When to read what
 

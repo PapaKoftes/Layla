@@ -215,3 +215,9 @@ agent/runtime_config.json.audit-*
 
 # Real-eval trend output (local run history, not source)
 agent/eval/history/
+
+# Internal optional layer / emulation notes — kept on disk, excluded from the public repo
+docs/INTERNAL_NOTE.md
+docs/BRIDGE_NOTE.md
+docs/ALIGNMENT_NOTE.md
+docs/BRIDGE_NOTE.md

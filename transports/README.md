@@ -88,7 +88,7 @@ DM-style bots, **set an allowlist and/or pairing**:
 
 Platforms: `telegram`, `slack`, `discord`.
 
-See [docs/ALIGNMENT_NOTE.md](../docs/ALIGNMENT_NOTE.md).
+See docs/ALIGNMENT_NOTE.md.
 
 ## Config (optional)
 

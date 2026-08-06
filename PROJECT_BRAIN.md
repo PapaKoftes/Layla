@@ -78,19 +78,19 @@ The repo is set up for **disciplined** changes. **You** enforce the habit:
 
 ## System Deep References
 
-This project maintains **uniform technical depth** documentation. Full coverage of tracked module clusters is in **[`docs/MODULE_SWEEP_STATUS.md`](docs/MODULE_SWEEP_STATUS.md)** (other sweeps—Install, Main, Runtime, Research, Capabilities, Layla core—also live under `docs/`; the status table is authoritative).
+This project maintains **uniform technical depth** documentation. Full coverage of tracked module clusters is in **`docs/MODULE_SWEEP_STATUS.md`** (other sweeps—Install, Main, Runtime, Research, Capabilities, Layla core—also live under `docs/`; the status table is authoritative).
 
 ### Module Sweeps
 
 Individual subsystem deep dives (examples):
 
-- UI → [`docs/UI_MODULE_SECOND_SWEEP.md`](docs/UI_MODULE_SECOND_SWEEP.md)
+- UI → `docs/UI_MODULE_SECOND_SWEEP.md`
 - Agent Loop → [`docs/archive/sweep_stubs/AGENT_LOOP_MODULE_SECOND_SWEEP.md`](docs/archive/sweep_stubs/AGENT_LOOP_MODULE_SECOND_SWEEP.md)
-- Services → [`docs/SERVICES_MODULE_SECOND_SWEEP.md`](docs/SERVICES_MODULE_SECOND_SWEEP.md)
-- Routers → [`docs/ROUTERS_MODULE_SECOND_SWEEP.md`](docs/ROUTERS_MODULE_SECOND_SWEEP.md)
-- Geometry → [`docs/GEOMETRY_MODULE_SECOND_SWEEP.md`](docs/GEOMETRY_MODULE_SECOND_SWEEP.md)
-- MCP / CLI → [`docs/MCP_MODULE_SECOND_SWEEP.md`](docs/MCP_MODULE_SECOND_SWEEP.md)
-- Integrations → [`docs/INTEGRATIONS_MODULE_SECOND_SWEEP.md`](docs/INTEGRATIONS_MODULE_SECOND_SWEEP.md)
+- Services → `docs/SERVICES_MODULE_SECOND_SWEEP.md`
+- Routers → `docs/ROUTERS_MODULE_SECOND_SWEEP.md`
+- Geometry → `docs/GEOMETRY_MODULE_SECOND_SWEEP.md`
+- MCP / CLI → `docs/MCP_MODULE_SECOND_SWEEP.md`
+- Integrations → `docs/INTEGRATIONS_MODULE_SECOND_SWEEP.md`
 
 ### Purpose
 

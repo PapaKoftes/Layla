@@ -1,6 +1,6 @@
 # Layla Prebuilt Platform — Fully Integrated Local AI Companion
 
-This document defines Layla's long-term architecture as a **fully prebuilt local AI companion platform**. All major capabilities ship integrated rather than requiring optional plugins or external setup. See [AGENTS.md](../AGENTS.md), [ARCHITECTURE.md](../ARCHITECTURE.md), [docs/IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md), and [LAYLA_NORTH_STAR.md](../LAYLA_NORTH_STAR.md) for related context.
+This document defines Layla's long-term architecture as a **fully prebuilt local AI companion platform**. All major capabilities ship integrated rather than requiring optional plugins or external setup. See [AGENTS.md](../AGENTS.md), [ARCHITECTURE.md](../ARCHITECTURE.md), docs/IMPLEMENTATION_STATUS.md, and [LAYLA_NORTH_STAR.md](../LAYLA_NORTH_STAR.md) for related context.
 
 ---
 
@@ -356,7 +356,7 @@ flowchart TB
 
 - [AGENTS.md](../AGENTS.md) — AI operations manual, hard rules, repo map
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — Request flow, state locations
-- [docs/IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) — North Star mapping, prebuilt domains table
+- docs/IMPLEMENTATION_STATUS.md — North Star mapping, prebuilt domains table
 - [LAYLA_NORTH_STAR.md](../LAYLA_NORTH_STAR.md) — Canonical vision
 - [knowledge/layla-capabilities-map.md](../knowledge/layla-capabilities-map.md) — capabilities inventory (authoritative tool count: **195**, `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`)
 - [docs/CAPABILITIES.md](CAPABILITIES.md) — Capability registry, discovery, benchmark

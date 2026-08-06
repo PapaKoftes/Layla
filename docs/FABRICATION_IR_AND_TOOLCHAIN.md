@@ -57,6 +57,6 @@ Tools attach deterministic validation metadata:
 
 ## Related docs
 
-- [GEOMETRY_MODULE_SECOND_SWEEP.md](GEOMETRY_MODULE_SECOND_SWEEP.md) — geometry subsystem depth
+- GEOMETRY_MODULE_SECOND_SWEEP.md — geometry subsystem depth
 - [FABRICATION_ASSIST.md](FABRICATION_ASSIST.md) — assist vs deterministic kernel boundary
-- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) — North Star row mapping
+- IMPLEMENTATION_STATUS.md — North Star row mapping
