@@ -5,12 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Release state:** the current code is **1.6.3** (`agent/version.py`). The latest git tag is
-> **`v1.5.0`**; **1.6.3** and **1.6.0** are documented below and ship in the source tree, but the
-> matching git tag is applied as a human release step (see `docs/RELEASE_CHECKLIST.md`). The full
-> suite is green and the shipping-model coding benchmark is recorded in the 1.6.3 entry. (The earlier
-> `[2.0.0] — 2026-02-22` entry was a mis-number for the first release and is corrected to `[1.0.0]`,
-> matching the `v1.0.0` tag.)
+> **Release state:** the current code is **1.7.0** (`agent/version.py`), tagged **`v1.7.0`**. The full
+> suite is green (4,473 passing; one known ordering flake that passes in isolation), and a full reliability
+> crash-course (data integrity, crash recovery, security boundaries, migration safety, offline, scale) is
+> recorded below. Prior tags: `v1.5.0`, `v1.0.0`. (The earlier `[2.0.0] — 2026-02-22` entry was a mis-number
+> for the first release and is corrected to `[1.0.0]`, matching the `v1.0.0` tag.)
+
+---
+
+## [1.7.0] — 2026-08-06
+
+The companion + polish + reliability release. Layla stops being clinical when you're hurting, the whole
+interface can speak your language, and the app has been hardened against the failure modes that actually
+break a local-first assistant.
+
+### Companion quality — the crown-jewel fix
+- **Emotional messages now get warmth, not a task list.** An "I'm in pain about my relationship" message
+  used to route to the task/coding blade under an anti-warmth output-discipline and come back clinical —
+  advice lists, "draft her a message", "seek counseling" — and kept pushing a draft even after being told to
+  stop. A new distress detector routes affective turns to the warm aspect (Echo) with a warmth-first
+  discipline: validate first, stay present, no unsolicited plans/drafts/clinical advice, and honor "stop."
+  Measured on the real conversation that surfaced this: companion-quality score rose from ~3.3/10 (refusing,
+  draft-obsessed, looping) to a present, boundary-respecting reply.
+
+### Chat fixes
+- **Formatting no longer collapses when streaming ends.** A repetition-collapser was flattening every
+  numbered list / multi-paragraph reply onto one line in the final frame; newlines are now preserved.
+- **Stop button** actually aborts a streaming reply.
+- **Edit an earlier message** — ChatGPT-style edit + regenerate-from-there.
+- **No more phantom approvals.** The small model would propose `write_file`/`git_commit` on ordinary chat
+  turns, each raising an approval prompt; mutating tools are now suppressed on non-agentic turns.
+
+### Internationalization
+- **The interface actually switches language now.** Previously shell-only — the whole navigation, every
+  overlay-panel title, and panel interiors (input placeholders + action buttons) are localized, applied on
+  mount via a central observer. German + Spanish/French/Italian/Portuguese fully translated; Japanese/
+  Korean/Arabic/Russian/Chinese carry English fallbacks pending native translation.
+
+### Reliability & operability
+- **Governor no longer evicts the model while you're active.** It was unloading the LLM ~2 min after any
+  system-wide keyboard activity, so the app felt "always down" and every message paid a cold reload. The
+  model now stays warm (opt back in via `governor_unload_model_when_user_active`).
+- Verified by a full crash-course: hard-kill mid-write → **zero corruption, in-flight writes survive,
+  auto-recovers**; 1,000 chats / 500-message conversation / 10,000 indexed docs with clean integrity;
+  1,600 concurrent config writes with no corruption; 14/14 malformed inputs handled gracefully; SQLi
+  parameterized; corrupt config → defaults restored; migration is idempotent with zero data loss;
+  fully offline after first-run.
+
+### UI & onboarding polish
+- Warmer, de-cluttered empty state; sentence-cased panel titles matched to the nav; in-panel explainers
+  (Knowledge base / Background tasks / Journal / Deliberate); intake-quiz gained a companion half whose
+  answers shape Layla's tone; English added to the language tutor; installer "no model" path points at the
+  one-command provisioner.
 
 ---
 
