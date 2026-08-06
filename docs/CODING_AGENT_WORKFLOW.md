@@ -32,5 +32,5 @@ Poor results on large refactors usually mean **wrong model tier** or **truncated
 
 ## Related
 
-- [PARITY_AUDIT.md](PARITY_AUDIT.md) — status table vs reference patterns  
-- [PARITY_BACKLOG.md](PARITY_BACKLOG.md) — MCP depth and sub-agent gaps  
+- PARITY_AUDIT.md — status table vs reference patterns  
+- PARITY_BACKLOG.md — MCP depth and sub-agent gaps  

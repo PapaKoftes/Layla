@@ -47,7 +47,6 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 | [GOLDEN_FLOW.md](GOLDEN_FLOW.md) | End-to-end request lifecycle and contracts |
 | [POST_AGENT_RESPONSE_CONTRACT.md](POST_AGENT_RESPONSE_CONTRACT.md) | `POST /agent` response shapes |
 | [PRODUCTION_CONTRACT.md](PRODUCTION_CONTRACT.md) | Caps, safety invariants, `/health`, logging |
-| [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | North Star sections vs code |
 | [RULES.md](RULES.md) | Naming, layout, allowed/forbidden patterns |
 | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Pre-publish verification |
 
@@ -94,19 +93,8 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 
 | Document | Description |
 |----------|-------------|
-| [MODULE_SWEEP_STATUS.md](MODULE_SWEEP_STATUS.md) | Subsystem sweep registry |
-| [MODULE_SWEEP_TEMPLATE.md](MODULE_SWEEP_TEMPLATE.md) | Template for new sweeps |
 | [STRUCTURED_ENGINEERING_PARTNER.md](STRUCTURED_ENGINEERING_PARTNER.md) | Engineering pipeline |
 | [ADAPTIVE_EXECUTION_ENGINE.md](ADAPTIVE_EXECUTION_ENGINE.md) | Budgets and adaptive execution |
-| [FINAL_SYSTEM_READINESS.md](FINAL_SYSTEM_READINESS.md) | Research lab, mission state, runtime limits audit |
-
----
-
-## Collaborators and audits
-
-| Document | Description |
-|----------|-------------|
-| [REPO_AUDIT_FOR_COLLABORATORS.md](REPO_AUDIT_FOR_COLLABORATORS.md) | Sharing the repo safely |
 | [../AGENTS.md](../AGENTS.md) | AI/contributor operations manual (read-first for AI assistants) |
 
 ---

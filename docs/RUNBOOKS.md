@@ -4,7 +4,7 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 
 Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use module sweeps for subsystem depth.
 
-**Module second sweeps:** [MODULE_SWEEP_TEMPLATE.md](MODULE_SWEEP_TEMPLATE.md) — skeleton for `*_MODULE_SECOND_SWEEP.md` reports; tracking table [MODULE_SWEEP_STATUS.md](MODULE_SWEEP_STATUS.md).
+**Module second sweeps:** MODULE_SWEEP_TEMPLATE.md — skeleton for `*_MODULE_SECOND_SWEEP.md` reports; tracking table MODULE_SWEEP_STATUS.md.
 
 **Config:** [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full list of `runtime_config.json` keys for advanced users.
 
@@ -12,11 +12,11 @@ Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use mod
 
 **Discord:** [DISCORD_SETUP.md](DISCORD_SETUP.md) — hook Layla to your Discord server (webhook, no bot).
 
-**optional layer (optional sidecar):** [ALIGNMENT_NOTE.md](ALIGNMENT_NOTE.md) maps optional layer concepts to Layla. [BRIDGE_NOTE.md](BRIDGE_NOTE.md) describes pointing an optional gateway at `POST /agent`. Layla-native onboarding is under **First run** below; no Node stack required for core use.
+**optional layer (optional sidecar):** ALIGNMENT_NOTE.md maps optional layer concepts to Layla. BRIDGE_NOTE.md describes pointing an optional gateway at `POST /agent`. Layla-native onboarding is under **First run** below; no Node stack required for core use.
 
-**command bridge (slash → HTTP):** [BRIDGE_NOTE.md](BRIDGE_NOTE.md) section 3 maps common Claude Code–style commands to Layla routes and tools.
+**command bridge (slash → HTTP):** BRIDGE_NOTE.md section 3 maps common Claude Code–style commands to Layla routes and tools.
 
-**Tool policy & markdown skills:** `tools_profile`, `tools_allow`, `tools_deny`, `tool_loop_detection_enabled`, `http_cache_ttl_seconds`, `inference_fallback_urls`, `browser_persistent_profiles` — see `agent/runtime_config.example.json` and [ALIGNMENT_NOTE.md](ALIGNMENT_NOTE.md). Optional AgentSkills-style files: repo [`skills/`](../skills/README.md) or `markdown_skills_dir` in config.
+**Tool policy & markdown skills:** `tools_profile`, `tools_allow`, `tools_deny`, `tool_loop_detection_enabled`, `http_cache_ttl_seconds`, `inference_fallback_urls`, `browser_persistent_profiles` — see `agent/runtime_config.example.json` and ALIGNMENT_NOTE.md. Optional AgentSkills-style files: repo [`skills/`](../skills/README.md) or `markdown_skills_dir` in config.
 
 ---
 
@@ -164,7 +164,7 @@ Layla can **retrieve** psychology-oriented material from `knowledge/` like any o
 
 5. **Config**: `direct_feedback_enabled` (blunt collaboration, opt-in) and `pin_psychology_framework_excerpt` (Echo/Lilith pinned reminder) — see `docs/CONFIG_REFERENCE.md`.
 
-**Full reconsideration** (in-repo knowledge, optional libs, research tools, what to avoid): [`docs/OPERATOR_PSYCHOLOGY_SOURCES.md`](OPERATOR_PSYCHOLOGY_SOURCES.md).
+**Full reconsideration** (in-repo knowledge, optional libs, research tools, what to avoid): `docs/OPERATOR_PSYCHOLOGY_SOURCES.md`.
 
 ---
 
