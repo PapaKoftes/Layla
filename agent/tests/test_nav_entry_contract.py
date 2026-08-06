@@ -573,7 +573,8 @@ def test_working_panels_are_browsable_not_only_searchable():
 def test_nav_groups_are_labelled_not_one_undifferentiated_list():
     """21 destinations behind one generic button was the defect. Dumping 21 into one list repeats it."""
     block = _sidebar_groups_block()
-    summaries = re.findall(r'<summary class="sidebar-nav-title">([^<]+)</summary>', block)
+    # `[^>]*` tolerates extra attributes on the summary (e.g. data-i18n added for localization).
+    summaries = re.findall(r'<summary class="sidebar-nav-title"[^>]*>([^<]+)</summary>', block)
     assert len(summaries) >= 3, (
         f"the nav collapsed into {len(summaries)} group(s): {summaries}. The group headings are the "
         "feature that makes this browsable — they answer 'what is in here?' without a click."
