@@ -386,7 +386,7 @@
   "port": 8000,
   "remote_model_name": "layla",
   "llama_server_url": null,
-  "_comment_inference_backend": "auto: no URL -> llama_cpp (local GGUF); Ollama URL -> ollama; else openai_compatible. See docs/ALIGNMENT_NOTE.md",
+  "_comment_inference_backend": "auto: no URL -> llama_cpp (local GGUF); Ollama URL -> ollama; else openai_compatible.",
   "inference_backend": "auto",
   "coding_model": null,
   "reasoning_model": null,

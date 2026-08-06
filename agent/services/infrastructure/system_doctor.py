@@ -335,7 +335,7 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
     except Exception as e:
         report["checks"]["port_8000"] = {"error": str(e)}
 
-    # Optional optional layer / sidecar gateway reachability (config-gated)
+    # Optional external gateway reachability (config-gated)
     try:
         import urllib.error
         import urllib.parse
@@ -348,7 +348,7 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
         if gw_raw:
             parsed = urllib.parse.urlparse(gw_raw)
             if parsed.scheme not in ("http", "https"):
-                report["checks"]["optional_gateway"] = {
+                report["checks"]["external_gateway"] = {
                     "ok": False,
                     "error": "external_gateway_url must be http(s)",
                 }
@@ -361,31 +361,31 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
                 try:
                     req = urllib.request.Request(check_url, method="GET")
                     with urllib.request.urlopen(req, timeout=3) as r:
-                        report["checks"]["optional_gateway"] = {
+                        report["checks"]["external_gateway"] = {
                             "ok": 200 <= (r.status or 0) < 500,
                             "url": check_url,
                             "http_status": r.status,
                         }
                 except urllib.error.HTTPError as e:
-                    report["checks"]["optional_gateway"] = {
+                    report["checks"]["external_gateway"] = {
                         "ok": e.code in (401, 403, 404),
                         "url": check_url,
                         "http_status": e.code,
                         "note": "reachable but non-200",
                     }
                 except Exception as e:
-                    report["checks"]["optional_gateway"] = {
+                    report["checks"]["external_gateway"] = {
                         "ok": False,
                         "url": check_url,
                         "error": str(e),
                     }
         else:
-            report["checks"]["optional_gateway"] = {
+            report["checks"]["external_gateway"] = {
                 "skipped": True,
                 "reason": "external_gateway_url not set",
             }
     except Exception as e:
-        report["checks"]["optional_gateway"] = {"error": str(e)}
+        report["checks"]["external_gateway"] = {"error": str(e)}
 
     # Skills registry
     try:
