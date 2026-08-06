@@ -1,5 +1,10 @@
 # LAYLA — FULL ROADMAP TO AUTONOMOUS AI ASSISTANT
 
+> ⚠️ **Historical planning document (snapshot ~2026-05-12).** The status table, test counts, and file
+> paths below are from an earlier development phase and are **out of date** — the shipped release is
+> **v1.7.0** with 4,400+ tests passing. This file is kept for historical context. For the current,
+> maintained roadmap see **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+
 **Goal:** A fully sovereign, locally-run AI companion that can research topics,
 build knowledge bases, assist daily programming, operate autonomously on multi-step
 tasks, and grow smarter with every interaction. No cloud, no extraction, your machine,

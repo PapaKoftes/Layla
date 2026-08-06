@@ -35,7 +35,7 @@ cd agent
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://localhost:8000` for the web UI. Interactive API docs: `http://localhost:8000/docs`.
+Open `http://localhost:8000/ui` for the web UI. Interactive API docs: `http://localhost:8000/docs`.
 
 ---
 
@@ -87,7 +87,7 @@ Before opening a PR:
 - [ ] Docs updated if behaviour changed
 - [ ] No hardcoded local paths (use `Path.home()` or config)
 - [ ] No personal identifiers in code, docs, or comments
-- [ ] If adding a new tool: add it to `TOOL_DISPATCH` in `layla/tools/registry.py`
+- [ ] If adding a new tool: add it to the matching domain module under `agent/layla/tools/impl/` (e.g. `code.py`, `automation.py`) — `_build_tools_from_domains()` in `agent/layla/tools/registry.py` auto-collects it into `TOOLS`
 - [ ] If adding a new aspect: add a JSON file to `personalities/`
 
 ---
