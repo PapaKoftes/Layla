@@ -25,11 +25,11 @@ Layla is a **self-hosted AI companion and engineering agent** that runs on the u
 | Ten-minute acceptance | [docs/GOLDEN_FLOW.md](docs/GOLDEN_FLOW.md) — section **Ten-minute operator acceptance** |
 | Sandbox + remote safety | [docs/OPERATOR_SANDBOX.md](docs/OPERATOR_SANDBOX.md), [docs/REMOTE_ARCHITECTURE.md](docs/REMOTE_ARCHITECTURE.md) |
 | Approvals / diff / grants | [docs/OPERATOR_APPROVALS.md](docs/OPERATOR_APPROVALS.md) |
-| Coding agent habits (spawn, MCP, approvals) | [docs/CODING_AGENT_WORKFLOW.md](docs/CODING_AGENT_WORKFLOW.md), [docs/PARITY_AUDIT.md](docs/PARITY_AUDIT.md) |
-| Web UI QA rubric | [docs/WEB_UI_OPERATOR_RUBRIC.md](docs/WEB_UI_OPERATOR_RUBRIC.md) |
+| Coding agent habits (spawn, MCP, approvals) | [docs/CODING_AGENT_WORKFLOW.md](docs/CODING_AGENT_WORKFLOW.md), docs/PARITY_AUDIT.md |
+| Web UI QA rubric | docs/WEB_UI_OPERATOR_RUBRIC.md |
 | CI / parity commands | [docs/VERIFICATION.md](docs/VERIFICATION.md) |
 
-Contributors: continue with **Repository map** below; update [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) when you change request flow.
+Contributors: continue with **Repository map** below; update docs/IMPLEMENTATION_STATUS.md when you change request flow.
 
 ---
 

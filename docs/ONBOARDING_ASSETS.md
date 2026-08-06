@@ -12,7 +12,7 @@ The Web UI and first-run wizard stay **clean-room**: no bundled third-party art 
 | **Library → Workspace → Memory** | Search learnings (client filter), optional Elasticsearch, file checkpoints. |
 | **Chat import** | No drag-and-drop UI yet: place export JSON/JSONL **inside the sandbox**, then use tool **`ingest_chat_export_to_knowledge`** (see [RUNBOOKS.md](RUNBOOKS.md) § Add knowledge → chat exports). |
 
-For a broader “product vision vs shipped” map, see [PRODUCT_UX_ROADMAP_VS_CURRENT.md](PRODUCT_UX_ROADMAP_VS_CURRENT.md).
+For a broader “product vision vs shipped” map, see PRODUCT_UX_ROADMAP_VS_CURRENT.md.
 
 **Ideas (verify license before use)**
 
