@@ -1,50 +1,75 @@
-# Layla — Léeme (Español)
+<div align="center">
 
-Tu compañera de programación con IA, **100 % local y privada**, que responde en **español**.
+# Layla
 
-## Qué es
-Layla se ejecuta enteramente en tu portátil — sin nube, sin cuotas y sin enviar tus datos a ningún sitio. Está ajustada para equipos modestos (CPU de gama media, 16 GB de RAM, poco espacio libre en disco) y conversa en español, manteniendo el código y los términos técnicos estándar en inglés (que es lo habitual al programar).
+**Tu propia IA. En tu equipo. Sin nube. Sin ataduras.**
 
-## Instalación (un solo comando)
-Requisitos: Windows + conexión a internet (solo para instalar y descargar el modelo).
+[English README](README.md) · [Descargar e instalar](https://github.com/PapaKoftes/Layla/releases/latest)
+
+</div>
+
+---
+
+Layla es una **compañera de IA local y privada**. Funciona enteramente en tu equipo con el modelo (GGUF) que elijas — sin cuenta, sin suscripción y sin enviar tus datos a ningún sitio. Recuerda, aprende, tiene muchas herramientas y puede acompañarte tanto en lo personal como en tareas técnicas. Responde en **español** (el código y los términos técnicos se mantienen en inglés, como es habitual al programar).
+
+> **Nota sobre la licencia:** Layla es **de código disponible bajo una licencia no comercial** — gratis para uso personal, educativo y no comercial. Consulta [LICENSE](LICENSE).
+
+---
+
+## Instalación (sin ser programador)
+
+1. Ve a la [página de descargas](https://github.com/PapaKoftes/Layla/releases/latest) y, en **Assets**, descarga **`Source code (zip)`** (o en la [página principal](https://github.com/PapaKoftes/Layla), botón verde **Code → Download ZIP**). **Descomprime** la carpeta donde quieras.
+2. Abre la carpeta y **haz doble clic** en **`INSTALL.bat`** (Windows) o **`Install Layla.command`** (Mac). Instala todo y elige un modelo para tu equipo automáticamente — sin compilador, sin permisos de administrador y sin necesidad de tener Python.
+3. La **primera vez** descarga su modelo (unos **2–5 GB**, puede tardar **10–40 minutos**). No cierres la ventana. Al terminar, Layla se abre en tu navegador.
+
+**Para volver a abrirla:** haz doble clic en **`START.bat`**.
+
+> Solo necesita internet para esa primera descarga. Después, Layla funciona **100 % sin conexión** — nada de lo que digas sale de tu equipo.
+
+### Alternativa (un solo comando, PowerShell)
 
 ```powershell
 git clone https://github.com/PapaKoftes/Layla.git
 cd Layla
-powershell -ExecutionPolicy Bypass -File install\castilla.ps1
+powershell -ExecutionPolicy Bypass -File install\bootstrap.ps1
 ```
 
-El instalador, sin necesidad de compilador:
-1. Instala **Python 3.12** si hace falta.
-2. Crea un entorno aislado (`.venv`).
-3. Instala las dependencias desde ruedas precompiladas (llama-cpp + torch).
-4. **Detecta tu hardware** y descarga el modelo adecuado (**Qwen2.5-Coder-3B**, ~2 GB).
-5. Configura Layla para **responder en español**.
+Para que responda en español, el instalador lo configura por ti; también puedes ajustar `response_language` en la Configuración.
 
-## Para iniciarla
-```powershell
-.\.venv\Scripts\Activate.ps1
-cd agent
-python serve.py
-```
-Luego abre **http://127.0.0.1:8000** en tu navegador.
+---
 
 ## Qué esperar
-- **Velocidad:** ~6–8 tokens/seg en tu CPU (el modelo 3B es rápido y ligero).
-- **Idioma:** responde en español; el código y los términos técnicos van en inglés.
-- **Privacidad:** todo ocurre en tu portátil. Nada sale de tu equipo.
-- **Disco:** el 3B ocupa ~2 GB; el instalador elige un modelo más ligero si te queda poco espacio.
 
-## Si quieres más calidad (y tienes paciencia)
-El modelo **7B** es más capaz pero más lento (~3 tokens/seg) y ocupa ~4,7 GB:
+- **Privacidad:** todo ocurre en tu equipo. Nada se envía a la nube.
+- **Idioma:** conversa en español; el código y los términos técnicos van en inglés. La **interfaz** también se puede cambiar a español en **Configuración → Idioma de la interfaz**.
+- **Velocidad:** en una CPU modesta, las primeras palabras tardan unos segundos y luego fluye. Un modelo más pequeño responde más rápido.
+- **Disco:** el modelo recomendado ocupa ~2–5 GB; el instalador elige uno más ligero si te queda poco espacio.
+
+## Si quieres más calidad
+
+Un modelo más grande es más capaz pero más lento. Puedes cambiarlo desde **Configuración → Modelos**, o descargar otro con:
+
 ```powershell
-.\.venv\Scripts\python.exe agent\install\provision_model.py --prefer balanced --spanish
+.\.venv\Scripts\python.exe agent\install\provision_model.py --prefer balanced
 ```
 
-## Conectar con el PC principal (opcional)
-Para usar la Layla del PC principal desde el portátil mediante un túnel seguro, consulta
-`install\INSTALL.md` (sección *Connect*). El acceso remoto exige autenticación por defecto.
+Consulta [MODELS.md](MODELS.md) para la lista completa.
 
-## Ayuda
-- Guía en inglés: `install/INSTALL.md`
-- Notas de la versión: `docs/archive/RELEASE-CASTILLA.md`
+---
+
+## Sus seis voces
+
+Layla tiene seis facetas — una constructora, una investigadora, una oyente cálida, una chispa creativa, una crítica y una protectora — y cambia entre ellas según lo que le traigas. Recuerda, crece y es solo tuya.
+
+## Más información
+
+- **Todas las funciones, capturas y detalles técnicos:** [README en inglés](README.md)
+- **Modelos y configuración:** [MODELS.md](MODELS.md)
+- **Instalación avanzada / solución de problemas:** [install/INSTALL.md](install/INSTALL.md)
+- **Acceso remoto** (usar la Layla de tu PC principal desde otro equipo mediante un túnel seguro con autenticación): sección *Connect* de `install/INSTALL.md`.
+
+---
+
+<div align="center">
+<sub>Layla · funciona localmente en tu equipo · código disponible en <a href="https://github.com/PapaKoftes/Layla">GitHub</a></sub>
+</div>
