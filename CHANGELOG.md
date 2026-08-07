@@ -19,6 +19,22 @@ The companion + polish + reliability release. Layla stops being clinical when yo
 interface can speak your language, and the app has been hardened against the failure modes that actually
 break a local-first assistant.
 
+### 1.7.0 patch — 2026-08-07 (same release)
+- **No more phantom "REFUSED: Manipulation and Coercion" after a normal reply.** On the Lilith aspect a small
+  model would answer a benign, playful, or affectionate message and then tack on a spurious refusal block,
+  often rendered as a big markdown heading. Fixed in depth: the `[REFUSED:]` refusal *template* is no longer
+  taught to any aspect (it was priming the model to complete one), the aspect's refusal instruction now
+  excludes ordinary conversation and forbids emitting a refusal label, and the reply sanitizer strips a
+  leaked `REFUSED:` block even when wrapped in markdown decoration (`## `, `**`, `> `).
+- **NVIDIA GPU acceleration is now automatic.** The installer detects an NVIDIA card (`nvidia-smi`) and
+  installs the CUDA build of llama.cpp so the model runs on the GPU, with an automatic CPU fallback if the
+  CUDA build can't load. `-Accel gpu|cpu` (Windows) / `--accel` (Linux) forces it; already-installed users can
+  run `install\enable_gpu.ps1` to switch on GPU without re-downloading the model.
+- **Re-running the installer no longer re-downloads what you already have** — an existing `.venv` is reused
+  and a present model is skipped, so installing an update is fast.
+- **Complete uninstall** — `uninstall.ps1 -Purge` / `uninstall.bat purge` (Windows) and `./uninstall.sh --purge`
+  (macOS/Linux) wipe everything the installer created (venv, models, data, config, knowledge, logs) with no prompts.
+
 ### Companion quality — the crown-jewel fix
 - **Emotional messages now get warmth, not a task list.** An "I'm in pain about my relationship" message
   used to route to the task/coding blade under an anti-warmth output-discipline and come back clinical —

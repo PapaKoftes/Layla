@@ -26,6 +26,12 @@ Layla es una **compañera de IA local y privada**. Funciona enteramente en tu eq
 
 > Solo necesita internet para esa primera descarga. Después, Layla funciona **100 % sin conexión** — nada de lo que digas sale de tu equipo.
 
+### ¿Tienes una tarjeta NVIDIA? Es automático
+
+El instalador ejecuta **`nvidia-smi`**; si encuentra una tarjeta NVIDIA instala la versión **CUDA** de llama.cpp y ejecuta el modelo en tu GPU (mucho más rápido que en CPU). La versión CUDA trae su propio runtime — **no hay que instalar el CUDA toolkit**, solo tener el **driver de NVIDIA actualizado**. Si la versión GPU no carga (driver antiguo), el instalador vuelve solo a la versión CPU para que la instalación funcione igual.
+
+- **¿Ya la instalaste en CPU y ahora quieres GPU?** Ejecuta una vez: `powershell -ExecutionPolicy Bypass -File install\enable_gpu.ps1` — solo cambia la versión de llama.cpp (tu modelo descargado no se toca) y lo verifica. Para revertir: `install\enable_gpu.ps1 -Off`.
+
 ### Alternativa (un solo comando, PowerShell)
 
 ```powershell

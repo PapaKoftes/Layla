@@ -1017,8 +1017,14 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
     # Unbracketed 'REFUSED: reason' — a small model appends a fake refusal tail AFTER an actual
     # answer ("int x = 0;\nREFUSED: too broad"). It's leaked control scaffolding, not prose, so cut
     # from a line-anchored REFUSED: to the end. Case-SENSITIVE (the marker is always upper-case) so
-    # legit prose like "the request was refused: here's why" is untouched.
-    t = re.sub(r"(?:^|\n)[ \t]*REFUSED[ \t]*:.*\Z", "", t, flags=re.DOTALL).strip()
+    # legit prose like "the request was refused: here's why" is untouched. The leading char class
+    # tolerates MARKDOWN DECORATION the model wraps it in — "## REFUSED:" (heading), "**REFUSED:**"
+    # (bold), "> REFUSED:" (quote) — which a bare line-start anchor missed, letting the block render
+    # as a big header (the "please? :D" -> spurious 'REFUSED: Manipulation and Coercion' report).
+    t = re.sub(
+        r"(?:^|\n)[ \t>]*[#*_`~\-]{0,6}[ \t]*REFUSED[ \t*_`]*:.*\Z",
+        "", t, flags=re.DOTALL,
+    ).strip()
     # Catch-all for the rest of the internal scaffolding vocabulary a small model echoes
     # (INQUIRY, MERGE, THINK, PLAN, STEP, ANSWER, CONCLUSION, ASPECT, …) so no bracketed
     # control tag survives into the visible reply.
