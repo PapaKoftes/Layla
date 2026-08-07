@@ -1,8 +1,10 @@
 """Logic-level guards for the transcript bugs: answer+refuse, tool-limit dead-end, persona recital.
 
-1. [REFUSED:] priming — every aspect ships can_refuse:true, so gating the marker instruction on
-   can_refuse injected it on EVERY turn and a small model pattern-completed it (answered, then
-   appended "REFUSED: too broad"). Only a will_refuse gatekeeper (Lilith) may see the marker.
+1. [REFUSED:] priming — a small model pattern-completes any refusal template it is shown (it
+   answers, then appends "REFUSED: too broad" / renders "## REFUSED: …" as a heading). We therefore
+   teach the marker to NO aspect, not even the will_refuse gatekeeper (Lilith): genuine harmful
+   requests are declined in plain language via the content-policy block in the system head, and the
+   leading-[REFUSED:] parser in reasoning_handler stays only as a defensive catch for a stray marker.
 2. tool_limit must end with an ANSWER — the loop used to break straight out and the router
    surfaced "Stopped after maximum tool calls" even when gathered context could answer.
 3. Persona recital — the full persona prose injected on a phatic turn gets recited back
@@ -16,32 +18,29 @@ if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-# ── 1. REFUSED marker only for the will_refuse gatekeeper ────────────────────
+# ── 1. REFUSED marker is taught to NO aspect (not even the gatekeeper) ────────
 
 def _aspect(aid):
     import orchestrator
     return orchestrator.select_aspect("", force_aspect=aid)
 
 
-def test_standard_prompt_no_refused_marker_for_non_gatekeepers():
+def test_standard_prompt_never_teaches_refused_marker():
     import orchestrator
-    for aid in ("morrigan", "nyx", "echo", "eris", "cassandra"):
+    # Including lilith (will_refuse gatekeeper): handing a small model the template primed the
+    # spurious-refusal-tail bug, so no aspect is shown it.
+    for aid in ("morrigan", "nyx", "echo", "eris", "cassandra", "lilith"):
         p = orchestrator.build_standard_prompt(message="what is 2+2?", aspect=_aspect(aid))
-        assert "[REFUSED" not in p, f"{aid} (can_refuse but not will_refuse) must not be taught the marker"
+        assert "[REFUSED" not in p, f"{aid} must not be taught the refusal marker template"
+        assert "If you must refuse" not in p, f"{aid} must not be taught the refusal clause"
 
 
-def test_standard_prompt_refused_marker_for_lilith_only():
+def test_deliberation_conclusion_never_teaches_refusal_clause():
     import orchestrator
-    p = orchestrator.build_standard_prompt(message="what is 2+2?", aspect=_aspect("lilith"))
-    assert "[REFUSED" in p  # the actual gatekeeper keeps her refusal channel
-
-
-def test_deliberation_conclusion_refusal_gated_on_will_refuse():
-    import orchestrator
-    p_m = orchestrator.build_deliberation_prompt(message="q", active_aspect=_aspect("morrigan"))
-    assert "If you must refuse" not in p_m
-    p_l = orchestrator.build_deliberation_prompt(message="q", active_aspect=_aspect("lilith"))
-    assert "If you must refuse" in p_l
+    for aid in ("morrigan", "lilith"):
+        p = orchestrator.build_deliberation_prompt(message="q", active_aspect=_aspect(aid))
+        assert "If you must refuse" not in p, f"{aid} deliberation must not carry the refusal clause"
+        assert "[REFUSED" not in p, f"{aid} deliberation must not carry the refusal marker"
 
 
 # ── 2. tool_limit forces a wrap-up answer ────────────────────────────────────

@@ -100,6 +100,16 @@ What to expect the first time: it **downloads a model (~2–5 GB)**, which can t
 
 > Developers / power users: the one-command CLI install and alternatives are below.
 
+### Have an NVIDIA GPU? It's automatic
+
+The installer runs **`nvidia-smi`**; if it finds an NVIDIA card it installs the **CUDA build** of
+llama.cpp and offloads the model to your GPU (much faster than CPU). The CUDA wheel bundles its own
+runtime — **no CUDA toolkit to install**, just an up-to-date NVIDIA driver. If the GPU build can't
+load (old driver), the installer automatically falls back to the CPU build so the install still works.
+
+- **Force it on/off at install:** `install\bootstrap.ps1 -Accel gpu` (or `-Accel cpu`); on Linux, `./install/bootstrap.sh --accel gpu`.
+- **Already installed on CPU and want GPU now?** Run once: `powershell -ExecutionPolicy Bypass -File install\enable_gpu.ps1` — it swaps only the llama.cpp build (your downloaded model is untouched) and verifies it. Revert anytime with `install\enable_gpu.ps1 -Off`.
+
 **First-time guide:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
 
 **10-minute green path** (health, `/ui`, first chat, optional approval): [docs/GOLDEN_FLOW.md](docs/GOLDEN_FLOW.md) — section *Ten-minute operator acceptance*.
@@ -146,9 +156,9 @@ Options: `--prefer quality|balanced|lite|speed`, `--skip-model`, `--verify` (Pow
 
 ### Uninstall
 
-- **Windows** — run **`uninstall.ps1`** (or `uninstall.bat`) from the repo root. It stops/removes the `LaylaSvc` service, the `Jinx Agent Server` scheduled task, the two firewall rules, the `LAYLA_INSTALL_ROOT` env var, and the `.venv`; it then offers to delete your data (`~/.layla`, models). If you used the packaged `.exe`, use its own entry in **Add/Remove Programs**.
-- **Shared packages are NOT auto-removed** (they may be used by other software): Python 3.12 and, if you enabled the tunnel, `cloudflared` — the uninstaller prints the `winget uninstall` commands so you can remove them manually.
-- **macOS/Linux** — delete the repo folder and `~/.layla`; no system services are installed.
+- **Windows** — run **`uninstall.ps1`** (or `uninstall.bat`) from the repo root. It stops/removes the `LaylaSvc` service, the `Jinx Agent Server` scheduled task, the two firewall rules, the `LAYLA_INSTALL_ROOT` env var, and the `.venv`; it then offers to delete your data (`~/.layla`, models). For a **complete wipe with no prompts**, run `uninstall.ps1 -Purge` (or `uninstall.bat purge`) — it removes the venv, models, data, config/secrets, knowledge, and logs in one shot. If you used the packaged `.exe`, use its own entry in **Add/Remove Programs**.
+- **macOS/Linux** — run **`./uninstall.sh`** (interactive) or **`./uninstall.sh --purge`** (complete wipe) from the repo root. It removes the `.venv` and, per your choice, the downloaded models and your data (repo DB, `agent/runtime_config.json`, `~/.layla`).
+- **Shared packages are NOT auto-removed** (they may be used by other software): the uv-managed Python 3.12 (`uv python uninstall 3.12` if unused) and, if you enabled the tunnel, `cloudflared`.
 
 ---
 

@@ -12,16 +12,18 @@
 #
 # Options:
 #   --prefer quality|balanced|lite|speed   model bias for detected hardware (default balanced)
+#   --accel auto|gpu|cpu                   NVIDIA GPU offload: auto-detect (default), force on, or force off
 #   --skip-model                           set up the env but don't download a model yet
 #   --verify                               skip install; just run the deep self-test
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
 
-PREFER="balanced"; SKIP_MODEL=0; VERIFY=0
+PREFER="balanced"; SKIP_MODEL=0; VERIFY=0; ACCEL="${ACCEL:-auto}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --prefer) PREFER="$2"; shift 2;;
+    --accel) ACCEL="$2"; shift 2;;
     --skip-model) SKIP_MODEL=1; shift;;
     --verify) VERIFY=1; shift;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
@@ -33,9 +35,26 @@ echo ""
 echo "  LAYLA - installer (uv, compiler-free)"
 echo "  -------------------------------------"
 
-LLAMA_INDEX="https://abetlen.github.io/llama-cpp-python/whl/cpu"
+LLAMA_INDEX_CPU="https://abetlen.github.io/llama-cpp-python/whl/cpu"
+LLAMA_INDEX_CUDA="https://abetlen.github.io/llama-cpp-python/whl/cu124"
 LLAMA_SPEC="llama-cpp-python>=0.3.1,<0.4"
 VPY=".venv/bin/python"
+
+# CPU vs CUDA llama.cpp build. GPU offload (n_gpu_layers, set by provision_model when a GPU is
+# detected) does nothing unless the CUDA wheel is installed - the CPU wheel silently ignores it.
+# Auto-detect an NVIDIA card via nvidia-smi (Linux only; macOS uses the CPU wheel - a Metal build
+# needs a source compile). ACCEL=gpu|cpu forces it. The CUDA wheel bundles the CUDA 12.4 runtime;
+# if it fails to load, the self-test step falls back to the CPU wheel so the install still works.
+USE_GPU=0
+GPU_NAME=""
+if [ "${ACCEL:-auto}" != "cpu" ] && [ "$(uname -s)" = "Linux" ] && command -v nvidia-smi >/dev/null 2>&1; then
+  GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 | sed 's/^ *//;s/ *$//')"
+  [ -n "$GPU_NAME" ] && USE_GPU=1
+fi
+if [ "${ACCEL:-auto}" = "gpu" ] && [ "$USE_GPU" = "0" ]; then
+  echo "  ACCEL=gpu requested but no NVIDIA GPU found (nvidia-smi / Linux only). Using the CPU build."
+fi
+if [ "$USE_GPU" = "1" ]; then LLAMA_INDEX="$LLAMA_INDEX_CUDA"; else LLAMA_INDEX="$LLAMA_INDEX_CPU"; fi
 
 # 1) ensure uv (single static binary; needs no Python, no admin)
 if ! command -v uv >/dev/null 2>&1; then
@@ -60,12 +79,22 @@ fi
 echo "  [2/7] Provisioning Python 3.12 ..."
 uv python install 3.12
 
-# 3) virtual environment
-echo "  [3/7] Creating .venv ..."
-uv venv --python 3.12 .venv
+# 3) virtual environment. Reuse an existing one so a RE-RUN (e.g. a bugfix update) does not wipe the
+# venv and reinstall every wheel - uv pip install below is idempotent. (To switch CPU<->GPU on an
+# existing install, re-run with a removed .venv or use --accel with a fresh env.)
+if [ -x "$VPY" ]; then
+  echo "  [3/7] Reusing existing .venv (re-run: nothing re-downloaded that is already present)"
+else
+  echo "  [3/7] Creating .venv ..."
+  uv venv --python 3.12 .venv
+fi
 
 # 4) compiler-free heavy wheels FIRST (prebuilt; no toolchain), then the app
-echo "  [4/7] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
+if [ "$USE_GPU" = "1" ]; then
+  echo "  [4/7] NVIDIA GPU detected ($GPU_NAME) - installing the CUDA llama.cpp build for GPU offload ..."
+else
+  echo "  [4/7] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
+fi
 uv pip install --python "$VPY" "$LLAMA_SPEC" \
   --extra-index-url "$LLAMA_INDEX" --index-strategy unsafe-best-match
 # torch: Linux uses the CPU-only wheel index (no CUDA, smaller). macOS wheels are NOT on that index
@@ -106,10 +135,20 @@ fi
 if [ "$SKIP_MODEL" != "1" ]; then
   echo "  [7/7] Deep self-test (model load + real inference turn) ..."
   if ! "$VPY" scripts/selftest.py; then
-    echo "  Self-test failed - reinstalling the llama-cpp CPU wheel (handles a corrupt wheel"
-    echo "  or an AVX build this CPU can't run) and retrying ..."
+    RETRY_INDEX="$LLAMA_INDEX"
+    if [ "$USE_GPU" = "1" ]; then
+      echo "  Self-test failed with the CUDA build - the NVIDIA driver may be too old or a runtime"
+      echo "  library is missing. Falling back to the CPU build so Layla still runs (update your"
+      echo "  driver, then re-run to get GPU speed) ..."
+      RETRY_INDEX="$LLAMA_INDEX_CPU"
+      # CPU build cannot offload; record n_gpu_layers=0 so config reflects reality.
+      "$VPY" -c "import json,pathlib; p=pathlib.Path('agent/runtime_config.json'); d=json.loads(p.read_text('utf-8')) if p.exists() else {}; d['n_gpu_layers']=0; p.write_text(json.dumps(d,indent=2),encoding='utf-8')" 2>/dev/null || true
+    else
+      echo "  Self-test failed - reinstalling the llama-cpp CPU wheel (handles a corrupt wheel"
+      echo "  or an AVX build this CPU can't run) and retrying ..."
+    fi
     uv pip install --python "$VPY" --reinstall "$LLAMA_SPEC" \
-      --extra-index-url "$LLAMA_INDEX" --index-strategy unsafe-best-match
+      --extra-index-url "$RETRY_INDEX" --index-strategy unsafe-best-match
     "$VPY" scripts/selftest.py || {
       echo "  Self-test still failing - see the [FAIL] lines above. Try --prefer lite for a"
       echo "  smaller model, or free more RAM. The install is otherwise complete." >&2

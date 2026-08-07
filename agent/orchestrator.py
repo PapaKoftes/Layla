@@ -636,14 +636,15 @@ def build_deliberation_prompt(
     for name, symbol, cue in deliberation_lines:
         prompt += f"\n[{symbol} {name}] ({cue}):\n"
 
-    # Deliberation conclusion: only a will_refuse gatekeeper (Lilith) is taught the [REFUSED:]
-    # marker. can_refuse is true on EVERY aspect, so keying on it injected the marker every turn
-    # and primed false refusals appended to real answers (see build_standard_prompt).
-    conclusion_refusal = "If you must refuse, start with [REFUSED: reason]. " if active_aspect.get("will_refuse") else ""
+    # Deliberation conclusion: we deliberately DO NOT teach the model the "[REFUSED: reason]" marker
+    # anymore. Even scoped to the will_refuse gatekeeper (Lilith), handing a small model a refusal
+    # template primed it to pattern-complete one — it would answer a benign turn and then tack on a
+    # spurious "REFUSED: …" tail (a playful "please? :D" drew a 'REFUSED: Manipulation and Coercion').
+    # Genuine harmful requests are still declined in plain language via the content-policy block in the
+    # system head; the leading-[REFUSED:] consumer in reasoning_handler stays as a defensive parser.
     prompt += (
         f"\n[CONCLUSION — {concluder_name.upper()}]: "
         "One direct answer. Do not echo or repeat the aspect lines. "
-        + conclusion_refusal
         + f"{concluder_name}:"
     )
     return prompt
@@ -756,20 +757,18 @@ def build_standard_prompt(
     # One-line character anchor so the model knows who is speaking, without echoing the full system head
     anchor = f"[Active aspect: {name}" + (f" — {title}" if title else "") + "]"
 
-    # Only the ACTIVE GATEKEEPER aspect (will_refuse — Lilith) is taught the [REFUSED:] marker.
-    # The old gate keyed on can_refuse — but EVERY aspect ships can_refuse:true, so the marker
-    # instruction was injected on every turn and a small model pattern-completed it: it would
-    # ANSWER a benign question and then append "REFUSED: too broad" (the transcript bug). The
-    # streaming path never even parses the marker, so for non-gatekeepers it was pure priming.
-    # Everyone else declines in plain language per the content-policy block in the system head.
-    refusal_clause = "If you must refuse, start with [REFUSED: reason]. " if aspect.get("will_refuse") else ""
+    # We no longer teach the model the "[REFUSED: reason]" marker on ANY aspect. Even scoped to the
+    # will_refuse gatekeeper (Lilith), a small model pattern-completes a refusal template: it would
+    # ANSWER a benign question and then append "REFUSED: too broad" / render "## REFUSED: …" as a
+    # heading (the transcript bug + the friend's "please? :D" report). Genuine harmful requests are
+    # declined in plain language per the content-policy block in the system head; the leading
+    # [REFUSED:] parser in reasoning_handler remains only as a defensive catch for a stray marker.
 
     parts = []
     if head:
         parts.append(head)
     parts.append(
         anchor + " Reply as " + name + " only, in her style. "
-        + refusal_clause
     )
     if convo_block:
         parts.append(f"Recent conversation:\n{convo_block}")

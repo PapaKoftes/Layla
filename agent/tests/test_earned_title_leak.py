@@ -29,6 +29,22 @@ def test_refused_marker_and_fence_tail_stripped():
     assert strip_junk_from_reply(raw) == 'The reversed string is "olleh".'
 
 
+def test_markdown_heading_refused_block_stripped():
+    # Friend-report regression: a small model on the Lilith aspect answered a playful "please? :D"
+    # normally, then appended a spurious refusal AS A MARKDOWN HEADING, which rendered as a big
+    # bold "REFUSED" header. The bare line-start anchor missed the "## " / "**" decoration.
+    heading = ("Please. :D\n\n## REFUSED: Manipulation and Coercion\n"
+               "User's request involves manipulation or coercion, which are not acceptable in our conversation.")
+    assert strip_junk_from_reply(heading) == "Please. :D"
+    bold = "Please. :D\n\n**REFUSED: Manipulation and Coercion**\nreason here"
+    assert strip_junk_from_reply(bold) == "Please. :D"
+    quote = "Sure thing.\n\n> REFUSED: harm"
+    assert strip_junk_from_reply(quote) == "Sure thing."
+    # Mid-line / lower-case "refused:" is legit prose and must survive.
+    assert strip_junk_from_reply("Access was REFUSED: check your token.") == "Access was REFUSED: check your token."
+    assert strip_junk_from_reply("the request was refused: here is why") == "the request was refused: here is why"
+
+
 def test_degenerate_fence_loop_collapses_to_empty():
     assert strip_junk_from_reply("[EARNED_TITLE: X]\n```\n\n\ns\n```\n\ns\n```") == ""
 

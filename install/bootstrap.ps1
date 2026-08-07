@@ -2,8 +2,9 @@
 #
 # Installs Python ITSELF + every dependency, then provisions a model for your
 # hardware and runs a deep self-test. No system Python, no MSVC/CMake, no admin:
-# uv fetches a standalone Python and we install prebuilt CPU wheels for llama-cpp
-# + torch, so there is nothing to compile.
+# uv fetches a standalone Python and we install prebuilt wheels for llama-cpp
+# + torch, so there is nothing to compile. An NVIDIA GPU is auto-detected and, when
+# present, the CUDA llama.cpp build is installed so the model runs on the GPU.
 #
 #   git clone https://github.com/PapaKoftes/Layla.git
 #   cd Layla
@@ -14,10 +15,12 @@
 #
 # Options:
 #   -Prefer quality|balanced|lite|speed   model bias for detected hardware (default balanced)
+#   -Accel auto|gpu|cpu                   NVIDIA GPU offload: auto-detect (default), force on, or force off
 #   -SkipModel                            set up the env but don't download a model yet
 #   -Verify                               skip install; just run the deep self-test
 param(
     [ValidateSet("quality", "balanced", "lite", "speed")][string]$Prefer = "balanced",
+    [ValidateSet("auto", "gpu", "cpu")][string]$Accel = "auto",
     [switch]$SkipModel,
     [switch]$Verify,
     [switch]$NoStart   # skip auto-launching Layla at the end (CI/automation)
@@ -30,13 +33,37 @@ Write-Host ""
 Write-Host "  Layla - installer (uv, compiler-free)" -ForegroundColor Magenta
 Write-Host "  -------------------------------------"
 
-$LlamaIndex = "https://abetlen.github.io/llama-cpp-python/whl/cpu"
+$LlamaIndexCpu  = "https://abetlen.github.io/llama-cpp-python/whl/cpu"
+$LlamaIndexCuda = "https://abetlen.github.io/llama-cpp-python/whl/cu124"
 $LlamaSpec = "llama-cpp-python>=0.3.1,<0.4"
 $VPy = ".\.venv\Scripts\python.exe"
 
 function Test-Uv {
     try { uv --version *> $null; return ($LASTEXITCODE -eq 0) } catch { return $false }
 }
+
+function Get-NvidiaGpu {
+    # Return the GPU name if nvidia-smi reports one, else $null. Uses nvidia-smi only
+    # (no torch, no CUDA toolkit) - the app's own hardware probe queries the same tool.
+    try {
+        $out = & nvidia-smi --query-gpu=name --format=csv,noheader 2>$null
+        if ($LASTEXITCODE -eq 0 -and $out) { return ([string]($out | Select-Object -First 1)).Trim() }
+    } catch {}
+    return $null
+}
+
+# CPU vs CUDA llama.cpp build. GPU offload (n_gpu_layers, set by provision_model when a GPU is
+# detected) does NOTHING unless the CUDA wheel is installed - the CPU wheel silently ignores it.
+# Auto-detect an NVIDIA card; -Accel gpu|cpu forces it. The CUDA wheel BUNDLES the CUDA 12.4
+# runtime (no toolkit install needed) and runs on any recent driver; if it fails to load, the
+# self-test step falls back to the CPU wheel so the install always ends up working.
+$Gpu = $null
+if ($Accel -ne "cpu") { $Gpu = Get-NvidiaGpu }
+if ($Accel -eq "gpu" -and -not $Gpu) {
+    Write-Host "  -Accel gpu requested but no NVIDIA GPU found (nvidia-smi). Using the CPU build." -ForegroundColor Yellow
+}
+$UseGpu = [bool]$Gpu
+$LlamaIndex = if ($UseGpu) { $LlamaIndexCuda } else { $LlamaIndexCpu }
 
 # 1) ensure uv (single static binary; needs no Python, no admin)
 if (-not (Test-Uv)) {
@@ -60,19 +87,30 @@ if ($Verify) {
 Write-Host "[2/7] Provisioning Python 3.12 ..."
 uv python install 3.12
 
-# 3) virtual environment
-Write-Host "[3/7] Creating .venv ..."
-uv venv --python 3.12 .venv
+# 3) virtual environment. Reuse an existing one so a RE-RUN (e.g. installing a bugfix update) does
+# not wipe the venv and reinstall every wheel - uv pip install below is idempotent and only touches
+# what changed. `uv venv` would recreate the env from scratch. (To switch CPU<->GPU on an existing
+# install use install\enable_gpu.ps1, which force-reinstalls just the llama.cpp wheel.)
+if (Test-Path $VPy) {
+    Write-Host "[3/7] Reusing existing .venv (re-run: nothing re-downloaded that is already present)"
+} else {
+    Write-Host "[3/7] Creating .venv ..."
+    uv venv --python 3.12 .venv
+}
 
 # 4) compiler-free heavy wheels FIRST (prebuilt; no toolchain), then the app
-Write-Host "[4/7] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
+if ($UseGpu) {
+    Write-Host "[4/7] NVIDIA GPU detected ($Gpu) - installing the CUDA llama.cpp build for GPU offload ..." -ForegroundColor Green
+} else {
+    Write-Host "[4/7] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
+}
 uv pip install --python $VPy $LlamaSpec --extra-index-url $LlamaIndex --index-strategy unsafe-best-match
 uv pip install --python $VPy torch --index-url https://download.pytorch.org/whl/cpu
 # research + crawl: web search, article extraction, PDF/arXiv/Wikipedia reading. These were
-# omitted, so a bootstrap install came up with the web-facing tools permanently degraded —
+# omitted, so a bootstrap install came up with the web-facing tools permanently degraded -
 # the README advertises "can browse the web" and the tool then reported a missing library.
 # Pure-Python/small wheels, no compiler. (playwright still needs `playwright install chromium`
-# for real browser automation — see README.)
+# for real browser automation - see README.)
 uv pip install --python $VPy -e ".[cpu,llm,research,crawl]"
 
 # 5) detect hardware -> provision the best coding kit + write config
@@ -104,15 +142,30 @@ if (-not $SkipModel) {
     Write-Host "[7/7] Deep self-test (model load + real inference turn) ..." -ForegroundColor Cyan
     & $VPy scripts\selftest.py
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "  Self-test failed. Reinstalling the llama-cpp CPU wheel and retrying ..." -ForegroundColor Yellow
-        uv pip install --python $VPy --reinstall $LlamaSpec --extra-index-url $LlamaIndex --index-strategy unsafe-best-match
+        # A failed self-test on the CUDA build almost always means the NVIDIA driver is too old or a
+        # runtime DLL is missing. Fall back to the CPU wheel (which always loads) so the install still
+        # succeeds, and set n_gpu_layers=0 so the config honestly reflects CPU-only inference.
+        $retryIndex = $LlamaIndex
+        if ($UseGpu) {
+            Write-Host "  Self-test failed with the CUDA build - the NVIDIA driver may be too old or a runtime DLL is missing." -ForegroundColor Yellow
+            Write-Host "  Falling back to the CPU build so Layla still runs (update your NVIDIA driver, then re-run to get GPU speed) ..." -ForegroundColor Yellow
+            $retryIndex = $LlamaIndexCpu
+            & $VPy -c "import json,pathlib; p=pathlib.Path('agent/runtime_config.json'); d=json.loads(p.read_text('utf-8')) if p.exists() else {}; d['n_gpu_layers']=0; p.write_text(json.dumps(d,indent=2),encoding='utf-8')" 2>$null
+        } else {
+            Write-Host "  Self-test failed. Reinstalling the llama-cpp CPU wheel and retrying ..." -ForegroundColor Yellow
+        }
+        uv pip install --python $VPy --reinstall $LlamaSpec --extra-index-url $retryIndex --index-strategy unsafe-best-match
         & $VPy scripts\selftest.py
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  Self-test still failing. See the [FAIL] lines above. Try -Prefer lite or free more RAM." -ForegroundColor Red
             exit 1
         }
     }
-    Write-Host "  Self-test passed - Layla loads a model and completes a turn on this machine." -ForegroundColor Green
+    if ($UseGpu) {
+        Write-Host "  Self-test passed - Layla loads the model on your NVIDIA GPU ($Gpu) and completes a turn." -ForegroundColor Green
+    } else {
+        Write-Host "  Self-test passed - Layla loads a model and completes a turn on this machine." -ForegroundColor Green
+    }
 }
 
 Write-Host ""
@@ -123,7 +176,7 @@ Write-Host ""
 
 # The README tells a non-technical user "when it finishes it opens ... in your browser." That was a
 # lie: bootstrap only PRINTED how to start, and INSTALL.bat has no pause, so the console vanished on
-# this line after a 10-40 minute download — no app, no browser, no instruction. In -Verify mode we
+# this line after a 10-40 minute download - no app, no browser, no instruction. In -Verify mode we
 # do NOT launch (it is a re-check, not a first run). Otherwise, actually start Layla so the promise
 # is true, unless the caller opts out (-NoStart, used by CI/automation).
 if (-not $Verify -and -not $NoStart) {
