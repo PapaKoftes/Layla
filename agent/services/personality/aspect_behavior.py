@@ -203,9 +203,17 @@ def build_behavior_block(aspect: dict) -> str:
     topics = get_refusal_topics(aspect)
     if topics:
         topic_str = ", ".join(topics)
+        # NOTE: a small model reads a bare "refuse clearly" instruction far too literally and tacks a
+        # spurious "REFUSED: …" block onto benign, playful, or affectionate turns (a "please? :D" got a
+        # 'REFUSED: Manipulation and Coercion' tail). Scope the trigger tightly to a GENUINE request for
+        # help doing one of these things, exclude ordinary conversation explicitly, and forbid the
+        # refusal-template shape outright (the leaked block is also stripped in response_builder as
+        # defense-in-depth).
         parts.append(
-            f"Refusal topics for this aspect: [{topic_str}]. "
-            "If the request directly involves these, refuse clearly and briefly."
+            f"Sensitive topics for this aspect: [{topic_str}]. "
+            "Only decline if the user is genuinely asking you to help do one of these things — and then "
+            "decline plainly in one sentence, in your own voice. Ordinary, playful, affectionate, or "
+            "emotional messages are never refusals. Never output a 'REFUSED' label, heading, or template."
         )
 
     # Tool bias (U9): each aspect favours/avoids certain tools — surfacing this in the
