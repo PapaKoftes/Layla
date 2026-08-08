@@ -27,6 +27,14 @@ next_permutation, simplify_path, …). All runs are deterministic (temperature 0
 - Both tiers are now **saturated** by these models — a *separating* score needs harder,
   longer, or multi-file problems (e.g. full HumanEval-164 + repo-level tasks). 100% here
   means "no failures across 22 canonical problems," not "the ceiling was found."
+- A third **`--xhard`** tier (5 OS-independent problems: largest_rectangle, coin_change, LIS,
+  trap_rain_water, min_window) was added to probe for separation. Measured on an RTX 5060 Ti
+  (GPU, sm_120 build): **7B 100% (5/5) @ 43.8 tok/s, 14B 100% (5/5) @ 23.0 tok/s** — *also*
+  saturated. Confirms canonical LeetCode-hard does not separate these Coder models; genuine
+  separation needs non-canonical work (repo-level, long-context, novel algorithms). The tier
+  is intentionally OS-independent: `simplify_path` in the hard tier is `os.path`-sensitive
+  (a solution using `os.path.abspath` passes on Linux, fails on Windows), so filesystem-path
+  problems measure the host OS, not the model. Run with `--xhard`; it is not tied to any CI floor.
 
 ## Run it
 ```bash

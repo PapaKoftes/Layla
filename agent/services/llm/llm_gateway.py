@@ -619,7 +619,8 @@ def _get_llm():
                          "n_threads", "n_threads_batch", "use_mlock", "use_mmap", "verbose"}
             inst = Llama(**{k: v for k, v in kwargs.items() if k in safe_keys})
 
-        # Guard: llama-cpp-python <=0.3.16 bug — when draft_model is set, _logits_all is
+        # Guard: llama-cpp-python speculative-decoding bug (verified STILL present in 0.3.34 - do NOT
+        # remove this guard for newer versions; it is NOT limited to <=0.3.16) — when draft_model is set, _logits_all is
         # forced True at runtime but scores is still allocated (n_batch, vocab) instead of
         # (n_ctx, vocab). Any prompt > n_batch tokens causes a broadcast ValueError.
         # Detect and fix: resize scores to (n_ctx, vocab) so eval() writes land correctly.
