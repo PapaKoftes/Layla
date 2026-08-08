@@ -302,6 +302,77 @@ PROBLEMS_HARD: list[dict[str, str]] = [
 _FENCE = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL)
 
 
+# A SEPARATING tier (--xhard): harder algorithmic problems (monotonic stack, DP, sliding window)
+# chosen to DISCRIMINATE between model sizes, since both models saturate the core+hard tiers at 100%.
+# Deliberately OS-independent (no filesystem/path problems) so the score does not depend on the host
+# OS the harness runs the generated code on (simplify_path in PROBLEMS_HARD is os.path-sensitive:
+# a solution using os.path.abspath passes on Linux and fails on Windows). Not tied to any committed
+# scorecard or CI floor, so extending it is safe.
+PROBLEMS_XHARD: list[dict[str, str]] = [
+    {
+        "task_id": "largest_rectangle",
+        "prompt": 'def largest_rectangle(heights: list[int]) -> int:\n    """Given bar heights of a histogram (each bar width 1), return the area of the\n    largest rectangle that fits entirely under the bars."""\n',
+        "entry_point": "largest_rectangle",
+        "test": (
+            "def check(c):\n"
+            "    assert c([2,1,5,6,2,3]) == 10\n"
+            "    assert c([2,4]) == 4\n"
+            "    assert c([]) == 0\n"
+            "    assert c([5]) == 5\n"
+            "    assert c([1,1,1,1]) == 4\n"
+        ),
+    },
+    {
+        "task_id": "coin_change",
+        "prompt": 'def coin_change(coins: list[int], amount: int) -> int:\n    """Fewest coins (unlimited supply of each) that sum to amount, or -1 if impossible."""\n',
+        "entry_point": "coin_change",
+        "test": (
+            "def check(c):\n"
+            "    assert c([1,2,5], 11) == 3\n"
+            "    assert c([2], 3) == -1\n"
+            "    assert c([1], 0) == 0\n"
+            "    assert c([1,2,5], 100) == 20\n"
+        ),
+    },
+    {
+        "task_id": "longest_increasing_subsequence",
+        "prompt": 'def longest_increasing_subsequence(nums: list[int]) -> int:\n    """Return the LENGTH of the longest strictly increasing subsequence of nums\n    (elements need not be contiguous but must keep order)."""\n',
+        "entry_point": "longest_increasing_subsequence",
+        "test": (
+            "def check(c):\n"
+            "    assert c([10,9,2,5,3,7,101,18]) == 4\n"
+            "    assert c([0,1,0,3,2,3]) == 4\n"
+            "    assert c([7,7,7,7]) == 1\n"
+            "    assert c([]) == 0\n"
+        ),
+    },
+    {
+        "task_id": "trap_rain_water",
+        "prompt": 'def trap_rain_water(height: list[int]) -> int:\n    """Given an elevation map (bar widths 1), return the total units of water trapped\n    between the bars after raining."""\n',
+        "entry_point": "trap_rain_water",
+        "test": (
+            "def check(c):\n"
+            "    assert c([0,1,0,2,1,0,1,3,2,1,2,1]) == 6\n"
+            "    assert c([4,2,0,3,2,5]) == 9\n"
+            "    assert c([]) == 0\n"
+            "    assert c([1,2,3]) == 0\n"
+        ),
+    },
+    {
+        "task_id": "min_window",
+        "prompt": 'def min_window(s: str, t: str) -> str:\n    """Return the shortest substring of s that contains EVERY character of t (with\n    multiplicity). If none exists, return the empty string. If several are tied, any\n    minimal one is fine; the tests use inputs with a unique minimal window."""\n',
+        "entry_point": "min_window",
+        "test": (
+            "def check(c):\n"
+            "    assert c('ADOBECODEBANC', 'ABC') == 'BANC'\n"
+            "    assert c('a', 'a') == 'a'\n"
+            "    assert c('a', 'aa') == ''\n"
+            "    assert c('a', 'b') == ''\n"
+        ),
+    },
+]
+
+
 def extract_code(text: str, entry_point: str) -> str:
     """Pull the candidate function out of a model response.
 
@@ -341,16 +412,18 @@ def run_one(candidate_code: str, problem: dict, scratch: Path, timeout: float = 
     return False, (r.stderr or r.stdout or "fail").strip().splitlines()[-1][:120] if (r.stderr or r.stdout) else "fail"
 
 
-def _llama_generator(model_path: str, max_tokens: int = 384) -> tuple[Callable[[str], tuple[str, int]], Callable[[], None]]:
+def _llama_generator(model_path: str, max_tokens: int = 384, n_gpu_layers: int = 0) -> tuple[Callable[[str], tuple[str, int]], Callable[[], None]]:
     """Build a generate(prompt)->(text, n_tokens) backed by a directly-loaded GGUF.
 
     (The same path the friend's box runs. Swap for services.llm_gateway.run_completion
     to benchmark the full app path.) *max_tokens* is raised for the harder tier, whose
     correct solutions (DP tables, parsers) run longer than the fundamentals need.
+    *n_gpu_layers* offloads layers to the GPU (0 = CPU, the default that CI and the
+    committed scorecards use; -1 = all layers) so the same harness can measure GPU tok/s.
     """
     from llama_cpp import Llama
 
-    llm = Llama(model_path=model_path, n_ctx=4096, n_threads=4, n_gpu_layers=0,
+    llm = Llama(model_path=model_path, n_ctx=4096, n_threads=4, n_gpu_layers=n_gpu_layers,
                 verbose=False, seed=42)
 
     def generate(prompt: str) -> tuple[str, int]:
@@ -418,13 +491,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--model", help="path to a .gguf model")
     ap.add_argument("--self-test", action="store_true", help="score the known-good solver (no model)")
     ap.add_argument("--hard", action="store_true", help="run the harder, discriminating problem tier")
+    ap.add_argument("--xhard", action="store_true", help="run the SEPARATING tier (harder still; both models saturate core+hard)")
     ap.add_argument("--out", default="", help="write the JSON scorecard here")
+    ap.add_argument("--n-gpu-layers", type=int, default=0,
+                    help="GPU layers to offload (0=CPU default used by CI/committed scorecards, -1=all)")
     args = ap.parse_args(argv)
 
-    problems = PROBLEMS_HARD if args.hard else PROBLEMS
-    tier = "hard" if args.hard else "core"
+    problems = PROBLEMS_XHARD if args.xhard else (PROBLEMS_HARD if args.hard else PROBLEMS)
+    tier = "xhard" if args.xhard else ("hard" if args.hard else "core")
     # Harder solutions (DP tables, parsers) need more room than the fundamentals.
-    gen_max_tokens = 640 if args.hard else 384
+    gen_max_tokens = 768 if args.xhard else (640 if args.hard else 384)
 
     with tempfile.TemporaryDirectory(prefix="layla_bench_") as td:
         scratch = Path(td)
@@ -439,9 +515,11 @@ def main(argv: list[str]) -> int:
                 print("error: --model PATH or --self-test required", file=sys.stderr)
                 return 2
             label = Path(args.model).name
-            generate, _close = _llama_generator(args.model, max_tokens=gen_max_tokens)
+            generate, _close = _llama_generator(args.model, max_tokens=gen_max_tokens,
+                                                n_gpu_layers=args.n_gpu_layers)
             card = benchmark(generate, problems, scratch)
     card["tier"] = tier
+    card["n_gpu_layers"] = 0 if args.self_test else args.n_gpu_layers
 
     card["model"] = label
     print(f"\n=== Coding benchmark [{tier}] | {label} ===")

@@ -54,9 +54,26 @@ function Get-NvidiaGpu {
 
 # CPU vs CUDA llama.cpp build. GPU offload (n_gpu_layers, set by provision_model when a GPU is
 # detected) does NOTHING unless the CUDA wheel is installed - the CPU wheel silently ignores it.
-# Auto-detect an NVIDIA card; -Accel gpu|cpu forces it. The CUDA wheel BUNDLES the CUDA 12.4
-# runtime (no toolkit install needed) and runs on any recent driver; if it fails to load, the
-# self-test step falls back to the CPU wheel so the install always ends up working.
+# Auto-detect an NVIDIA card; -Accel gpu|cpu forces it. The CUDA wheel ships ggml-cuda.dll but NOT
+# the CUDA runtime it links against, so Add-CudaRuntimeDlls installs cudart/cublas from pip wheels
+# next to it - without that the wheel fails to load on a box with no CUDA Toolkit. If it still fails
+# to load, the self-test step falls back to the CPU wheel so the install always ends up working.
+# NOTE: Blackwell (RTX 50-series / sm_120) needs NATIVE kernels the prebuilt wheel lacks - it will
+# load but run slower than CPU; use  install\enable_gpu.ps1 -Source  to build them (see GPU_BLACKWELL.md).
+function Add-CudaRuntimeDlls {
+    uv pip install --python $VPy nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 2>&1 | Out-Null
+    $lib = ".\.venv\Lib\site-packages\llama_cpp\lib"
+    $sp  = ".\.venv\Lib\site-packages"
+    if (-not (Test-Path $lib)) { return }
+    foreach ($sub in @("nvidia\cuda_runtime\bin", "nvidia\cublas\bin")) {
+        $src = Join-Path $sp $sub
+        if (Test-Path $src) {
+            Get-ChildItem $src -Filter "*.dll" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^(cudart64|cublas64|cublasLt64)_' } |
+                ForEach-Object { Copy-Item $_.FullName $lib -Force }
+        }
+    }
+}
 $Gpu = $null
 if ($Accel -ne "cpu") { $Gpu = Get-NvidiaGpu }
 if ($Accel -eq "gpu" -and -not $Gpu) {
@@ -105,6 +122,7 @@ if ($UseGpu) {
     Write-Host "[4/7] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
 }
 uv pip install --python $VPy $LlamaSpec --extra-index-url $LlamaIndex --index-strategy unsafe-best-match
+if ($UseGpu) { Add-CudaRuntimeDlls }   # the CUDA wheel needs cudart/cublas beside it or it won't load
 uv pip install --python $VPy torch --index-url https://download.pytorch.org/whl/cpu
 # research + crawl: web search, article extraction, PDF/arXiv/Wikipedia reading. These were
 # omitted, so a bootstrap install came up with the web-facing tools permanently degraded -
@@ -140,6 +158,7 @@ if ($EmbedCode -ne 0) {
 # 7) deep self-test - prove the model loads + completes a real turn (SIGILL/OOM/corrupt gate)
 if (-not $SkipModel) {
     Write-Host "[7/7] Deep self-test (model load + real inference turn) ..." -ForegroundColor Cyan
+    $fellBackToCpu = $false
     & $VPy scripts\selftest.py
     if ($LASTEXITCODE -ne 0) {
         # A failed self-test on the CUDA build almost always means the NVIDIA driver is too old or a
@@ -150,6 +169,7 @@ if (-not $SkipModel) {
             Write-Host "  Self-test failed with the CUDA build - the NVIDIA driver may be too old or a runtime DLL is missing." -ForegroundColor Yellow
             Write-Host "  Falling back to the CPU build so Layla still runs (update your NVIDIA driver, then re-run to get GPU speed) ..." -ForegroundColor Yellow
             $retryIndex = $LlamaIndexCpu
+            $fellBackToCpu = $true
             & $VPy -c "import json,pathlib; p=pathlib.Path('agent/runtime_config.json'); d=json.loads(p.read_text('utf-8')) if p.exists() else {}; d['n_gpu_layers']=0; p.write_text(json.dumps(d,indent=2),encoding='utf-8')" 2>$null
         } else {
             Write-Host "  Self-test failed. Reinstalling the llama-cpp CPU wheel and retrying ..." -ForegroundColor Yellow
@@ -161,8 +181,11 @@ if (-not $SkipModel) {
             exit 1
         }
     }
-    if ($UseGpu) {
+    if ($UseGpu -and -not $fellBackToCpu) {
         Write-Host "  Self-test passed - Layla loads the model on your NVIDIA GPU ($Gpu) and completes a turn." -ForegroundColor Green
+    } elseif ($fellBackToCpu) {
+        Write-Host "  Self-test passed - Layla runs on CPU. The CUDA build could not load, so GPU offload is OFF." -ForegroundColor Yellow
+        Write-Host "  To get GPU speed: update your NVIDIA driver, then re-run  install\enable_gpu.ps1" -ForegroundColor Yellow
     } else {
         Write-Host "  Self-test passed - Layla loads a model and completes a turn on this machine." -ForegroundColor Green
     }
