@@ -348,3 +348,172 @@ def validate_gcode_text(gcode: str) -> dict[str, Any]:
         "warnings": warnings[:20],
         "machine_readiness": "interpretive_preview" if ok else "not_validated",
     }
+
+
+# --- G-code SEMANTIC reader ---------------------------------------------------
+# validate_gcode_text() lints structure (units/spindle/feed/safe-codes). This goes further:
+# a modal state machine reconstructs the actual motion, so Layla can REASON about a .nc/.gcode
+# program (extent, depths, cut vs rapid, runtime, crash-risk rapids) instead of guessing from
+# the filename. Deterministic; not a CAM simulator (no collision/gouge proof).
+
+_WORD_RE = None
+
+
+def _gcode_words(line: str) -> list[tuple[str, str]]:
+    """(letter, value) pairs from one line, stripping ; and ( ) comments. Preserves order and
+    repeats (a line may carry several G-codes, e.g. 'G17 G21 G90')."""
+    global _WORD_RE
+    import re
+    if _WORD_RE is None:
+        _WORD_RE = re.compile(r"([A-Za-z])\s*(-?\d*\.?\d+)")
+    ln = re.sub(r"\(.*?\)", " ", line).split(";", 1)[0]
+    return [(m.group(1).upper(), m.group(2)) for m in _WORD_RE.finditer(ln)]
+
+
+def _arc_len_xy(sx: float, sy: float, ex: float, ey: float, i: float, j: float, cw: bool) -> float:
+    """Arc length in the XY plane. i,j are the center offset from the start point (standard)."""
+    cx, cy = sx + i, sy + j
+    r = math.hypot(sx - cx, sy - cy)
+    if r <= 0:
+        return math.hypot(ex - sx, ey - sy)
+    a0 = math.atan2(sy - cy, sx - cx)
+    a1 = math.atan2(ey - cy, ex - cx)
+    sweep = a1 - a0
+    if cw:  # G2 clockwise -> sweep negative
+        while sweep >= 1e-9:
+            sweep -= 2 * math.pi
+    else:   # G3 counter-clockwise -> sweep positive
+        while sweep <= -1e-9:
+            sweep += 2 * math.pi
+    if abs(sweep) < 1e-9:  # full circle (start == end) encoded as one arc word
+        sweep = -2 * math.pi if cw else 2 * math.pi
+    return abs(r * sweep)
+
+
+def parse_gcode_semantics(gcode: str, rapid_rate: float = 3000.0) -> dict[str, Any]:
+    """Reconstruct motion from G-code and derive machinist-level facts.
+
+    rapid_rate: assumed traverse speed (units/min) for runtime estimation when G0 has no feed.
+    Returns motion stats, bbox, z depth passes, tools, spindle speeds, runtime estimate, and
+    safety flags (rapids driven below the Z0 work plane = crash risk).
+    """
+    text = (gcode or "")
+    pos = [0.0, 0.0, 0.0]           # current X, Y, Z
+    motion = 0                       # modal motion mode (0/1/2/3)
+    absolute = True                  # G90 absolute (vs G91 incremental)
+    units = "unknown"
+    feed = 0.0
+    tools: list[int] = []
+    spindle_speeds: list[float] = []
+    spindle_on_before_cut = None     # None until first cut; True/False when known
+    saw_spindle = False
+
+    cut_moves = rapid_moves = 0
+    cut_length = rapid_length = 0.0
+    est_runtime_s = 0.0
+    z_levels: set[float] = set()
+    rapid_below_z0 = 0
+    xs: list[float] = []
+    ys: list[float] = []
+    zs: list[float] = []
+
+    for raw in text.splitlines():
+        words = _gcode_words(raw)
+        if not words:
+            continue
+        gcodes = [int(float(v)) for (l, v) in words if l == "G"]
+        mcodes = [int(float(v)) for (l, v) in words if l == "M"]
+        axis = {l: float(v) for (l, v) in words if l in ("X", "Y", "Z", "I", "J")}
+        for (l, v) in words:
+            if l == "F":
+                feed = float(v)
+            elif l == "S":
+                spindle_speeds.append(float(v))
+            elif l == "T":
+                t = int(float(v))
+                if t not in tools:
+                    tools.append(t)
+
+        if 20 in gcodes:
+            units = "inch"
+        if 21 in gcodes:
+            units = "mm"
+        if 90 in gcodes:
+            absolute = True
+        if 91 in gcodes:
+            absolute = False
+        if 3 in mcodes or 4 in mcodes:
+            saw_spindle = True
+        if 6 in mcodes:
+            pass  # tool change already captured via T word
+
+        motions_here = [g for g in gcodes if g in (0, 1, 2, 3)]
+        if motions_here:
+            motion = motions_here[-1]
+
+        has_move = any(a in axis for a in ("X", "Y", "Z"))
+        if not has_move:
+            continue
+
+        # Resolve target position (absolute or incremental).
+        def _coord(letter: str, cur: float) -> float:
+            if letter not in axis:
+                return cur
+            return axis[letter] if absolute else cur + axis[letter]
+
+        nx, ny, nz = _coord("X", pos[0]), _coord("Y", pos[1]), _coord("Z", pos[2])
+
+        if motion in (2, 3):
+            dxy = _arc_len_xy(pos[0], pos[1], nx, ny, axis.get("I", 0.0), axis.get("J", 0.0), cw=(motion == 2))
+            dist = math.hypot(dxy, nz - pos[2])
+        else:
+            dist = math.hypot(math.hypot(nx - pos[0], ny - pos[1]), nz - pos[2])
+
+        is_rapid = (motion == 0)
+        if is_rapid:
+            rapid_moves += 1
+            rapid_length += dist
+            if rapid_rate > 0:
+                est_runtime_s += dist / rapid_rate * 60.0
+            # Crash risk: a rapid that TRAVERSES in XY while below the Z0 work plane (drags the
+            # tool through stock), or a rapid that PLUNGES down into stock. A pure-Z retract UP
+            # from below Z0 is safe and must not flag.
+            xy_moved = (abs(nx - pos[0]) > 1e-9) or (abs(ny - pos[1]) > 1e-9)
+            if xy_moved and (pos[2] < -1e-9 or nz < -1e-9):
+                rapid_below_z0 += 1
+            elif (not xy_moved) and (nz < pos[2] - 1e-9) and (nz < -1e-9):
+                rapid_below_z0 += 1
+        else:
+            cut_moves += 1
+            cut_length += dist
+            if feed > 0:
+                est_runtime_s += dist / feed * 60.0
+            z_levels.add(round(nz, 4))
+            if spindle_on_before_cut is None:
+                spindle_on_before_cut = saw_spindle
+
+        xs += [pos[0], nx]; ys += [pos[1], ny]; zs += [pos[2], nz]
+        pos = [nx, ny, nz]
+
+    ok = (cut_moves + rapid_moves) > 0
+    bbox = [min(xs), min(ys), min(zs), max(xs), max(ys), max(zs)] if xs else [0.0] * 6
+    return {
+        "ok": ok,
+        "units": units,
+        "motion_count": cut_moves + rapid_moves,
+        "cut_moves": cut_moves,
+        "rapid_moves": rapid_moves,
+        "cut_length": round(cut_length, 4),
+        "rapid_length": round(rapid_length, 4),
+        "bbox": [round(v, 4) for v in bbox],
+        "z_levels": sorted(z_levels),
+        "depth_passes": len(z_levels),
+        "tools": tools,
+        "spindle_speeds": sorted(set(spindle_speeds)),
+        "est_runtime_s": round(est_runtime_s, 2),
+        "safety": {
+            "rapid_below_z0": rapid_below_z0,
+            "spindle_on_before_cut": bool(spindle_on_before_cut) if spindle_on_before_cut is not None else False,
+        },
+        "machine_readiness": "interpretive_preview" if ok else "not_validated",
+    }
