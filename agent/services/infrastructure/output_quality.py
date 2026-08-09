@@ -10,7 +10,10 @@ _JSON_START = re.compile(r"^\s*[\[{]")
 
 _HEDGE_PATTERNS = [
     re.compile(r"^\s*(sure|of course)[,\.\!\s]+", re.I),
-    re.compile(r"^\s*(here'?s|here is)\s+", re.I),
+    # NOTE: "here is / here's" is NOT a hedge — it's a valid presentational opener ("here is the
+    # fix", "here's the plan"). Stripping it produced incoherent fragments ("here is the fix." ->
+    # "the fix.") and contradicted the other reply paths (answer_of / _extract_text / strip_junk)
+    # that preserve it. Removed for consistency.
     re.compile(r"^\s*(i think|i believe|it seems|it looks like)[,\s]+", re.I),
     re.compile(r"^\s*as an ai( language model)?[,\s]+", re.I),
 ]
