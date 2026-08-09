@@ -401,12 +401,16 @@ export function checkOnboarding() {
     .then(function (d) {
       // Re-check: /onboarding/status is a round-trip, and the wizard can open while it is in flight.
       if (_firstRunSurfaceAhead()) { _deferOnboarding(); return; }
-      if (d.needs_onboarding && !d.in_progress) {
-        _showOnboardingPrompt();
-      } else if (d.in_progress && d.state) {
+      if (d.in_progress && d.state) {
+        // Resume an interview the user CHOSE to start (reload mid-way) — still honored.
         _state = d.state;
         _startInterview(true);
       }
+      // Streamlined first-run: we no longer AUTO-prompt this separate "5-minute interview" when
+      // `needs_onboarding` is true. The setup wizard's character quiz (step 3) already gets to know
+      // the user, so the extra prompt read as a redundant second "Meet Layla" right after finishing
+      // the wizard + tour. Deeper personality calibration stays available on demand via the command
+      // palette's "Intake quiz"; only the automatic post-setup interview prompt is removed here.
     })
     .catch(function () {
       // Server not ready or endpoint missing — silently skip

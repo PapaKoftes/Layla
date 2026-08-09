@@ -654,6 +654,7 @@ function init() {
     { id: 'intake-quiz', group: 'Go to', label: 'Intake quiz', keywords: ['quiz', 'intake', 'special', 'profile', 'stats', 'onboarding', 'personality'], run: () => intakeQuiz.openIntakeQuiz() },
     { id: 'custom-aspect', group: 'Go to', label: 'Create custom aspect', keywords: ['aspect', 'create', 'custom', 'persona', 'new', 'sigil', 'character'], run: () => customAspect.openCustomAspect() },
     { id: 'welcome', group: 'Go to', label: 'Welcome / about Layla', keywords: ['welcome', 'about', 'intro', 'onboarding', 'values', 'honesty', 'start'], run: () => welcome.openWelcome() },
+    { id: 'guided-tour', group: 'Go to', label: 'Guided tour / tutorial', keywords: ['tour', 'tutorial', 'guide', 'walkthrough', 'onboarding', 'getting started', 'help', 'intro'], run: () => characterCreator.startTutorial() },
     { id: 'marketplace', group: 'Go to', label: 'Kit marketplace', keywords: ['kit', 'marketplace', 'install', 'features', 'bundle', 'store', 'capabilities'], run: () => marketplace.openMarketplace() },
     { id: 'tutor', group: 'Go to', label: 'Language tutor', keywords: ['language', 'tutor', 'learn', 'german', 'italian', 'spanish', 'french', 'cefr', 'flashcards', 'deutsch', 'italiano', 'espanol'], run: () => tutor.openTutor() },
     { id: 'macros', group: 'Go to', label: 'Macros / workflows', keywords: ['macro', 'workflow', 'replay', 'record', 'automation', 'routine', 'repeat'], run: () => macros.openMacros() },
