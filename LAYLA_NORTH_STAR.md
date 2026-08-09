@@ -355,11 +355,7 @@ layla show stats          -- display current FRAME vector
 |-----------|--------|
 | Neurodivergence | [redacted] -- deep hyperfocus sprints, expensive context-switching |
 | Engineering | Advanced Python, CAD/CAM, CNC, OPC UA automation, robotics |
-| Location | [redacted] |
-| Companies | [redacted] |
-| Language | [redacted] |
 | Aesthetic | Black/purple/gold, engineered antihero, One Piece/Berserk/FMA:B |
-| Long-term project | [redacted] |
 
 ---
 
