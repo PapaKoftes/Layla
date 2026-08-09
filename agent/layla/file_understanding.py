@@ -184,6 +184,30 @@ def _analyze_gcode(content: str | bytes | None, path: Path | None = None) -> dic
     return out
 
 
+def _analyze_document(path: Path) -> dict:
+    """Real text extraction for pdf/docx/pptx/html via the ingestion extractor (Phase-4 activation:
+    these returned 'intent from context' before, though the extractor could already read them)."""
+    base = _intent_from_extension(path.suffix, path)
+    if not path or not path.exists():
+        return base
+    try:
+        from layla.ingestion.extractors import extract_text
+        text = extract_text(path) or ""
+        if not text.strip():
+            base["note"] = "no extractable text (scanned/empty or extractor unavailable)"
+            return base
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        headings = [ln for ln in lines[:300] if ln.startswith("#")][:15]
+        base["word_count"] = len(text.split())
+        base["preview"] = text[:600]
+        if headings:
+            base["headings"] = headings
+    except Exception as e:  # noqa: BLE001 - analysis must never raise
+        logger.debug("_analyze_document failed: %s", e)
+        base["read_error"] = str(e)
+    return base
+
+
 def _intent_from_extension(ext: str, path: Path) -> dict:
     """Binary or opaque format: format + intent from North Star map."""
     ext = ext.lower()
@@ -224,6 +248,8 @@ def analyze_file(file_path: str | Path = "", content: str | bytes | None = None)
         return _analyze_geometry3d(path or Path(str(file_path) or ""))
     if ext in (".nc", ".gcode", ".tap"):
         return _analyze_gcode(content, path)
+    if ext in (".pdf", ".docx", ".pptx", ".html", ".htm"):
+        return _analyze_document(path or Path(str(file_path) or ""))
     if ext in _FILE_INTENT:
         return _intent_from_extension(ext, path or Path(""))
     return {"format": ext or "unknown", "intent": "Unknown format; describe from context"}
