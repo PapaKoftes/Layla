@@ -414,11 +414,16 @@ def select_aspect(message: str, force_aspect: str = "") -> dict:
     except Exception:
         pass
 
-    # 2. Keyword/name trigger scoring
+    # 2. Keyword/name trigger scoring. WORD-BOUNDARY match, not substring — "core" no longer fires
+    #    inside "hardcore", "should i" only matches the whole phrase.
+    import re as _re
     scores: list[tuple[int, dict]] = []
     for a in aspects:
-        triggers = [t.lower() for t in a.get("triggers", [])]
-        score = sum(1 for t in triggers if t in msg_lower)
+        score = 0
+        for t in (a.get("triggers") or []):
+            tt = (t or "").lower().strip()
+            if tt and _re.search(r"\b" + _re.escape(tt) + r"\b", msg_lower):
+                score += 1
         if a.get("name", "").lower() in msg_lower:
             score += 5
         scores.append((score, a))
@@ -426,10 +431,14 @@ def select_aspect(message: str, force_aspect: str = "") -> dict:
     scores.sort(key=lambda x: x[0], reverse=True)
     best_score, best_aspect = scores[0] if scores else (0, _default_aspect())
 
-    if best_score > 0:
+    # A CONFIDENT keyword signal (a named aspect, or >=2 distinct triggers) wins immediately and
+    # cheaply. A single ambiguous trigger no longer short-circuits — fall through to embeddings so a
+    # lone keyword can't override semantic intent (audit: keyword-substring-first, embedding-last).
+    if best_score >= 2:
         return _maybe_add_nsfw_mode(best_aspect, msg_lower)
 
-    # 3. Embedding cosine similarity (tiebreaker when no keyword matched)
+    # 3. Embedding cosine similarity — now consulted whenever the keyword signal is weak (0 or 1),
+    #    not only when it's zero, so semantics can confirm or overturn a single-trigger guess.
     try:
         from layla.memory.vector_store import embed
         embs = _get_aspect_embeddings(aspects)
@@ -449,6 +458,9 @@ def select_aspect(message: str, force_aspect: str = "") -> dict:
     except Exception:
         pass
 
+    # 4. Otherwise honor a single weak keyword hit if there was one, else default.
+    if best_score >= 1:
+        return _maybe_add_nsfw_mode(best_aspect, msg_lower)
     return _default_aspect()
 
 
