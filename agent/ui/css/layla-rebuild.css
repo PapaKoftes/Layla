@@ -155,6 +155,68 @@ body.theme-obsidian {
   --wf-line-dim: var(--border);
 }
 
+/* ── 1c-ii. More curated presets ──────────────────────────────────────────────
+   Ivory: high-contrast LIGHT (the daylight counterpart to Obsidian) — near-white
+   ground, black text (21:1), strong dark hairlines, deep-magenta accent, no glow. */
+body.theme-ivory {
+  --bg:        #f4eef9;
+  --bg2:       #ece4f3;
+  --surface:   #ffffff;
+  --surface-2: #f3edf9;
+  --surface-3: #e7ddf0;
+  --border:    #6e5c86;   /* dark hairlines so structure reads on white */
+  --border-2:  #4c3a63;
+  --code-bg:   #f0e9f7;
+  --text:       #000000;  /* 21:1 */
+  --text-dim:   #241830;  /* ~15:1 */
+  --text-faint: #453558;  /* ~8:1 */
+  --crimson:  #6b0000;
+  --violet:   #3a1652;
+  --accent:      #7a0048;
+  --accent-text: #8a0050;
+  --accent-2:    #4a2060;
+  --accent-soft: rgba(122, 0, 72, 0.10);
+  --success: #1f7a43;
+  --danger:  #b12a1c;
+  --fx-strength: 0;
+}
+
+/* Amber: warm high-visibility dark — near-black warm ground, high-vis amber accent. */
+body.theme-amber {
+  --bg:        #0a0805;
+  --bg2:       #12100a;
+  --surface:   #17120a;
+  --surface-2: #201a0e;
+  --surface-3: #2b2410;
+  --border:    #4a3f22;
+  --border-2:  #6a5a30;
+  --code-bg:   #0d0a05;
+  --text:       #fff7e8;
+  --text-dim:   #e2d1ab;
+  --text-faint: #b8a479;
+  --crimson:  #ff7a5c;
+  --violet:   #d98a2a;
+  --accent:      #ffb454;   /* high-vis amber */
+  --accent-text: #ffcf8a;
+  --accent-2:    #e08a2a;
+  --accent-soft: rgba(255, 180, 84, 0.14);
+  --asp:      #ffb454;
+  --asp-glow: rgba(255, 180, 84, 0.26);
+  --asp-mid:  rgba(255, 180, 84, 0.13);
+  --success: #7ac74f;
+  --danger:  #ff6a4d;
+  --fx-strength: 0.10;
+}
+
+/* Aspectual: the whole accent tracks the ACTIVE aspect hue (--asp, set by aspect.js),
+   so switching Morrigan -> Nyx -> Echo re-tints the CTAs. Built on the Gothic ground. */
+body.theme-aspectual {
+  --accent:      var(--asp);
+  --accent-2:    var(--asp);
+  --accent-text: color-mix(in srgb, var(--asp) 45%, var(--text));
+  --accent-soft: var(--asp-mid);
+}
+
 /* ── 1d. User accessibility toggles (independent of OS prefers-*) ──────────────
    Driven by body classes from Settings > Appearance (input.js applyA11y). Placed
    AFTER the theme blocks so the contrast boost wins over the active theme's tokens.

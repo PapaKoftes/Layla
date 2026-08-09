@@ -300,16 +300,71 @@ try { window.laylaClearPendingImage = clearPendingImage; } catch (_) {}
 // Three ships-in-the-box themes. 'dark' (Gothic, default) carries no class; the
 // others map to a body class defined in layla-rebuild.css. Backward-compatible
 // with the old 'light'/'dark' localStorage values.
-export const LAYLA_THEMES = ['dark', 'light', 'obsidian'];
-const THEME_CLASS = { dark: '', light: 'theme-light', obsidian: 'theme-obsidian' };
-const THEME_LABEL = { dark: 'Gothic Dark', light: 'Soft Day', obsidian: 'Obsidian' };
-const THEME_GLYPH = { dark: '◐', light: '☀', obsidian: '◑' };
+// 'dark' (Gothic, default) carries no class; the rest map to a body class in
+// layla-rebuild.css. 'custom' is user-built (tokens injected from localStorage).
+// Backward-compatible with the old 'light'/'dark' localStorage values.
+const THEME_CLASS = {
+  dark: '', light: 'theme-light', obsidian: 'theme-obsidian',
+  ivory: 'theme-ivory', amber: 'theme-amber', aspectual: 'theme-aspectual', custom: 'theme-custom',
+};
+const THEME_LABEL = {
+  dark: 'Gothic Dark', light: 'Soft Day', obsidian: 'Obsidian',
+  ivory: 'Ivory', amber: 'Amber', aspectual: 'Aspectual', custom: 'Custom',
+};
+const THEME_GLYPH = { dark: '◐', light: '☀', obsidian: '◑', ivory: '☼', amber: '◉', aspectual: '❈', custom: '✎' };
+const _THEME_CLASSES = Object.keys(THEME_CLASS).map(function (k) { return THEME_CLASS[k]; }).filter(Boolean);
+export const LAYLA_THEMES = Object.keys(THEME_CLASS);   // every selectable theme
+const CYCLE_THEMES = ['dark', 'light', 'obsidian'];      // the ◐ quick-cycle (the rest live in Settings)
+
+// ── Custom theme (the in-app Theme Builder) ───────────────────────────────────
+const CUSTOM_TOKENS = ['--bg', '--bg2', '--surface', '--surface-2', '--surface-3', '--border', '--border-2',
+  '--code-bg', '--text', '--text-dim', '--text-faint', '--accent', '--accent-2', '--accent-text'];
+export function getCustomTheme() {
+  try { return Object.assign({}, JSON.parse(localStorage.getItem('layla_custom_theme') || '{}')); }
+  catch (_) { return {}; }
+}
+export function applyCustomTheme(tokens) {
+  const t = tokens || getCustomTheme();
+  let css = 'body.theme-custom{';
+  CUSTOM_TOKENS.forEach(function (k) { if (t[k]) css += k + ':' + t[k] + ';'; });
+  css += '}';
+  let el = document.getElementById('layla-custom-theme-css');
+  if (!el) { el = document.createElement('style'); el.id = 'layla-custom-theme-css'; document.head.appendChild(el); }
+  el.textContent = css;
+}
+/** Seed the custom palette from the CURRENTLY rendered theme so "Custom" starts as a copy, not blank. */
+export function seedCustomFromCurrent() {
+  if (Object.keys(getCustomTheme()).length) return getCustomTheme();   // already has edits
+  const cs = getComputedStyle(document.body); const t = {};
+  CUSTOM_TOKENS.forEach(function (k) { const v = cs.getPropertyValue(k).trim(); if (v) t[k] = v; });
+  try { localStorage.setItem('layla_custom_theme', JSON.stringify(t)); } catch (_) {}
+  applyCustomTheme(t); return t;
+}
+export function setCustomToken(key, value) {
+  const t = getCustomTheme(); t[key] = value;
+  try { localStorage.setItem('layla_custom_theme', JSON.stringify(t)); } catch (_) {}
+  applyCustomTheme(t);
+  let cur = 'dark'; try { cur = localStorage.getItem('layla_theme') || 'dark'; } catch (_) {}
+  if (cur !== 'custom') applyTheme('custom');   // first edit switches you into Custom so it shows live
+  return t;
+}
+export function resetCustomTheme() {
+  try { localStorage.removeItem('layla_custom_theme'); } catch (_) {}
+  applyCustomTheme({});
+  return {};
+}
+try {
+  window.laylaGetCustomTheme = getCustomTheme; window.laylaSetCustomToken = setCustomToken;
+  window.laylaResetCustomTheme = resetCustomTheme; window.laylaSeedCustomFromCurrent = seedCustomFromCurrent;
+  window.laylaCustomTokens = CUSTOM_TOKENS;
+} catch (_) {}
 
 export function applyTheme(name) {
   if (!Object.prototype.hasOwnProperty.call(THEME_CLASS, name)) name = 'dark';
   const b = document.body;
-  b.classList.remove('theme-light', 'theme-obsidian');
+  _THEME_CLASSES.forEach(function (c) { b.classList.remove(c); });
   if (THEME_CLASS[name]) b.classList.add(THEME_CLASS[name]);
+  if (name === 'custom') { seedCustomFromCurrent(); applyCustomTheme(); }
   try { localStorage.setItem('layla_theme', name); } catch (_) {}
   // Reflect state on every theme control (header + topbar share data-action).
   document.querySelectorAll('[data-action~="toggleTheme"]').forEach(function (btn) {
@@ -317,7 +372,7 @@ export function applyTheme(name) {
     btn.setAttribute('aria-label', 'Theme: ' + THEME_LABEL[name] + ', click to cycle');
     if (btn.textContent && THEME_GLYPH[name]) btn.textContent = THEME_GLYPH[name];
   });
-  // Let aspect coloring re-derive for the new ground (obsidian uses bright hues).
+  // Let aspect coloring re-derive for the new ground (obsidian/amber use bright hues).
   try { window.dispatchEvent(new CustomEvent('layla:theme', { detail: { theme: name } })); } catch (_) {}
   return name;
 }
@@ -326,8 +381,8 @@ try { window.laylaApplyTheme = applyTheme; } catch (_) {}
 export function toggleTheme() {
   let cur = 'dark';
   try { cur = localStorage.getItem('layla_theme') || 'dark'; } catch (_) {}
-  if (LAYLA_THEMES.indexOf(cur) === -1) cur = 'dark';   // migrate any legacy value
-  return applyTheme(LAYLA_THEMES[(LAYLA_THEMES.indexOf(cur) + 1) % LAYLA_THEMES.length]);
+  const i = CYCLE_THEMES.indexOf(cur);   // -1 when on a Settings-only preset -> ◐ returns to Gothic
+  return applyTheme(CYCLE_THEMES[(i + 1) % CYCLE_THEMES.length]);
 }
 
 // ── Accessibility toggles ─────────────────────────────────────────────────────
