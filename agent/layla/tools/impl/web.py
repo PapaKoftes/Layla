@@ -58,7 +58,9 @@ def fetch_url_tool(url: str, store: bool = False) -> dict:
             _res = _crawl(url, cfg=cfg, backend=_cb)
             if _res.get("ok") and (_res.get("content") or "").strip():
                 _out = {"ok": True, "url": url, "title": _res.get("title", ""),
-                        "content": _res["content"], "backend": _res.get("backend", _cb)}
+                        # cap the external-crawler output (built-in paths already truncate); a
+                        # generous upper bound so a pathological page can't return unbounded memory.
+                        "content": (_res.get("content") or "")[:200_000], "backend": _res.get("backend", _cb)}
                 try:
                     if not store:
                         from services.retrieval.http_response_cache import set_cached
