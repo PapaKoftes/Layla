@@ -808,7 +808,10 @@ def load_config() -> dict:
             # (no tool execution, cheap). Schema mirrors this in EDITABLE_SCHEMA.
             "inline_initiative_enabled": True,
             "initiative_engine_enabled": False,
-            "initiative_project_proposals_enabled": False,
+            # ON by default (owner decision): draft 1-3 text-only project proposals from recent work
+            # on a schedule. No tools run, nothing leaves the machine; acting on a proposal still
+            # needs approval, and any autonomy trust-tier ceiling the operator sets still gates it.
+            "initiative_project_proposals_enabled": True,
             # BL-190 mood: was read at system_head_builder.py:896 but set nowhere, so it defaulted
             # off and never injected. On + nudged from the turn loop = a mood that actually carries.
             "emotional_presence_enabled": True,
