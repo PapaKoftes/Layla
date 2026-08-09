@@ -5,11 +5,18 @@ content_guard.py -- Deterministic pre-model content filter.
 Runs BEFORE model inference on user input AND AFTER on model output.
 Three tiers of content classification:
 
-  Tier 1 (HARDCODED, no override):
+  Tier 1 (no per-tier override):
     - CSAM-adjacent content
     - Weapons of mass destruction synthesis instructions
     - Malware/exploit generation
-    These are universally illegal. No config flag disables them.
+    No PER-TIER flag disables Tier 1 (unlike Tier 2). NOTE: content_guard_enabled=False disables
+    the ENTIRE guard, Tier 1 included.
+
+  LIMITATIONS (do not oversell this): detection is deterministic keyword / co-occurrence matching,
+  NOT a semantic classifier -- paraphrase, translation, or synonyms can pass it. Treat it as a fast
+  first-line tripwire, not a complete safety boundary; the real enforcement gate is the approval
+  system. On an internal error the input and output checks now FAIL CLOSED (decline / withhold)
+  rather than passing content through.
 
   Tier 2 (blocked by default, user can override if age_verified):
     - Explicit gore/torture descriptions
