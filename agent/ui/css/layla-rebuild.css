@@ -87,28 +87,95 @@
    `var(--token, darkFallback)` fallback below) win in light mode and leave a
    half-dark UI. Values mirror layla.css's AA-tuned light palette. */
 body.theme-light {
-  --bg:        #f5f0f8;
-  --bg2:       #ebe5f0;
-  --surface:   #ffffff;
-  --surface-2: #f3eef8;
-  --surface-3: #e7ddf0;
-  --border:    #d5c8e0;
-  --border-2:  #c3b2d6;
-  --code-bg:   #e8e0f0;
-  --text:       #2a1a35;
-  --text-dim:   #4a3a55;
-  --text-faint: #6a5f78;
+  /* "Soft Day" — daylight without the glare. Surfaces are warm off-white, NOT pure #fff:
+     the old --surface:#fff (which every rail/card/panel/modal reads) is what made day mode
+     blinding. These sit at ~90-92% luminance so contrast stays AAA but the page stops burning. */
+  --bg:        #e7e1ee;
+  --bg2:       #ddd5e7;
+  --surface:   #f3eff8;   /* was #ffffff — the glare culprit */
+  --surface-2: #eae2f2;
+  --surface-3: #ded4ea;
+  --border:    #c9bedb;
+  --border-2:  #b1a1c8;
+  --code-bg:   #ede6f5;
+  --text:       #241830;  /* ~13:1 on --surface (AAA) */
+  --text-dim:   #4d4060;  /* ~7:1 (AAA) */
+  --text-faint: #6c5f7e;  /* ~4.7:1 (AA) */
   --crimson:  #6b0000;
   --violet:   #4a2060;
   --accent:      #8b0050;
-  --accent-text: #b0286a;   /* AA on the light bg */
+  --accent-text: #a02068;   /* AA on the off-white surface */
   --accent-2:    #6e3a94;
   --accent-soft: rgba(139, 0, 80, 0.10);
   --success: #2e8b57;
   --danger:  #c0392b;
+  --fx-strength: 0.08;      /* softer glow in daylight */
   --wf-line:     var(--border-2);
   --wf-line-dim: var(--border);
 }
+
+/* ── 1c. Obsidian — high-contrast pure black + high-vis purple ────────────────
+   Max-contrast dark mode: #000 ground, white text (21:1), high-visibility purple
+   accents (#b57bff ~8.9:1 on black), brightened borders so structure reads, glow off.
+   Per-aspect hues are remapped to bright variants so no aspect vanishes on black
+   (aspect.js is theme-aware and mirrors these — keep the two in sync). */
+body.theme-obsidian {
+  --bg:        #000000;
+  --bg2:       #060608;
+  --surface:   #0c0c10;
+  --surface-2: #141420;
+  --surface-3: #1e1e2c;
+  --border:    #4a4270;   /* brighter than default so hairlines are visible on black */
+  --border-2:  #6a5f96;
+  --code-bg:   #060609;
+  --text:       #ffffff;  /* 21:1 */
+  --text-dim:   #ddd4f5;  /* ~15:1 */
+  --text-faint: #bcb0e0;  /* ~10:1 */
+  --crimson:  #ff5c5c;
+  --violet:   #b57bff;
+  --accent:      #b57bff;  /* high-vis purple */
+  --accent-text: #cdb4ff;  /* ~11:1 on --surface */
+  --accent-2:    #9166f5;
+  --accent-soft: rgba(181, 123, 255, 0.16);
+  --success: #4fe89a;
+  --danger:  #ff6470;
+  --asp:      #b57bff;
+  --asp-glow: rgba(181, 123, 255, 0.28);
+  --asp-mid:  rgba(181, 123, 255, 0.14);
+  --asp-morrigan:  #ff5c5c;
+  --asp-nyx:       #b57bff;
+  --asp-echo:      #5c9dff;
+  --asp-eris:      #ffb454;
+  --asp-cassandra: #3fe0cf;
+  --asp-lilith:    #ff7ba0;
+  --fx-strength: 0;        /* crisp; contrast comes from borders + text, not glow */
+  --glow:    transparent;
+  --wf-glow: transparent;
+  --wf-line:     var(--border-2);
+  --wf-line-dim: var(--border);
+}
+
+/* ── 1d. User accessibility toggles (independent of OS prefers-*) ──────────────
+   Driven by body classes from Settings > Appearance (input.js applyA11y). Placed
+   AFTER the theme blocks so the contrast boost wins over the active theme's tokens.
+   Motion + font-size reuse the existing data-anim / appearance channels. */
+body.a11y-contrast {
+  --text-dim:   var(--text);        /* secondary text -> full strength */
+  --text-faint: var(--text-dim);
+  --border:     var(--border-2);    /* stronger hairlines */
+  --fx-strength: 0;
+  --glow: transparent;
+  --wf-glow: transparent;
+}
+body.a11y-legible {
+  --font-ui: 'Atkinson Hyperlegible', 'Verdana', system-ui, -apple-system, sans-serif;
+}
+body.a11y-legible, body.a11y-legible button, body.a11y-legible input,
+body.a11y-legible textarea, body.a11y-legible select { letter-spacing: 0.012em; }
+body.a11y-underline a, body.a11y-underline .link,
+body.a11y-underline [role="link"] { text-decoration: underline; }
+body.a11y-targets .header-action-btn, body.a11y-targets .topbar-btn,
+body.a11y-targets .sidebar-nav-btn, body.a11y-targets .tab-btn { min-block-size: 40px; }
 
 /* ── 2. Base ─────────────────────────────────────────────────────────────── */
 html { font-size: 16px; }        /* explicit rem anchor (was implicit; killed em-compounding drift) */
@@ -252,6 +319,12 @@ header .title { color: var(--text); font-weight: 700; }
   color: var(--text);
 }
 .header-overflow-menu hr { border-color: var(--border); }
+/* Monochrome, fixed-width menu glyphs (replaced mixed emoji for one icon language). */
+.header-overflow-menu .menu-ico {
+  display: inline-block; inline-size: 1.35em; text-align: center;
+  color: var(--text-faint); margin-inline-end: 4px; font-size: 0.95em;
+}
+.header-overflow-menu button:hover .menu-ico, .header-overflow-menu a:hover .menu-ico { color: var(--accent-text); }
 
 /* ── 5. Sidebar — conversations, voices, nav, dashboard ──────────────────── */
 .chat-rail-new {
