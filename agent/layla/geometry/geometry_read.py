@@ -3,8 +3,9 @@ Phase 2 (North Star 4/5/17): READ real 3D geometry, not just recognize the exten
 
 - Mesh (.stl/.obj/.ply/.off): trimesh, in-process (pure-Python-safe).
 - B-rep (.step/.stp/.iges/.igs): cadquery/OCP in a SUBPROCESS -- OCC can hard-crash on bad
-  input, so we isolate it (same pattern as backends/cadquery_backend.py). Recognizes cylindrical
-  faces as hole candidates (radius/axis/center), plus bbox/volume/solid/face counts.
+  input, so we isolate it (same pattern as backends/cadquery_backend.py). Recognizes INTERNAL
+  cylindrical faces as holes (radius/axis/center) -- an outer cylindrical wall/boss is classified
+  out via a solid-classifier test -- plus bbox/volume/solid/face counts.
 - read_geometry(path): dispatcher that also routes .dxf to the existing 2D machining IR.
 
 All readers degrade gracefully ({"ok": False, "error": ...}) if a lib is missing or a file is
@@ -67,6 +68,9 @@ try:
     from OCP.GProp import GProp_GProps
     from OCP.BRepAdaptor import BRepAdaptor_Surface
     from OCP.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane
+    from OCP.BRepClass3d import BRepClass3d_SolidClassifier
+    from OCP.TopAbs import TopAbs_IN
+    from OCP.gp import gp_Pnt, gp_Vec
 except Exception as e:
     print(json.dumps({"ok": False, "error": "cadquery/OCP unavailable: %s" % e})); sys.exit(0)
 try:
@@ -80,26 +84,56 @@ try:
     bb = Bnd_Box(); BRepBndLib.Add_s(tds, bb)
     xmin, ymin, zmin, xmax, ymax, zmax = bb.Get()
     props = GProp_GProps(); BRepGProp.VolumeProperties_s(tds, props); vol = props.Mass()
-    holes = []; n_plane = 0
+    solids = shape.Solids()
+    classifier = BRepClass3d_SolidClassifier(solids[0].wrapped) if solids else None
+
+    def is_hole(surf, cyl):
+        # A hole is an INTERNAL cylinder: step radially OUTWARD from the wall; if that lands in
+        # material, the solid surrounds the cylinder -> hole. If it lands in air -> outer wall/boss.
+        if classifier is None:
+            return True
+        try:
+            um = (surf.FirstUParameter() + surf.LastUParameter()) / 2.0
+            vm = (surf.FirstVParameter() + surf.LastVParameter()) / 2.0
+            p = surf.Value(um, vm)
+            ax = cyl.Axis(); loc = ax.Location(); d = ax.Direction()
+            vlp = gp_Vec(loc, p); t = vlp.Dot(gp_Vec(d.X(), d.Y(), d.Z()))
+            axp = gp_Pnt(loc.X() + t * d.X(), loc.Y() + t * d.Y(), loc.Z() + t * d.Z())
+            radial = gp_Vec(axp, p)
+            if radial.Magnitude() < 1e-9:
+                return True
+            radial.Normalize()
+            eps = max(0.01, 0.001 * cyl.Radius())
+            test = gp_Pnt(p.X() + eps * radial.X(), p.Y() + eps * radial.Y(), p.Z() + eps * radial.Z())
+            classifier.Perform(test, 1e-7)
+            return classifier.State() == TopAbs_IN
+        except Exception:
+            return True
+
+    holes = []; ext_cyl = 0; n_plane = 0
     faces = shape.Faces()
     for f in faces:
         s = BRepAdaptor_Surface(f.wrapped)
-        t = s.GetType()
-        if t == GeomAbs_Cylinder:
-            cyl = s.Cylinder(); ax = cyl.Axis(); loc = ax.Location(); d = ax.Direction()
-            holes.append({"radius": round(cyl.Radius(), 4),
-                          "axis_dir": [round(d.X(), 4), round(d.Y(), 4), round(d.Z(), 4)],
-                          "center": [round(loc.X(), 4), round(loc.Y(), 4), round(loc.Z(), 4)]})
-        elif t == GeomAbs_Plane:
+        gt = s.GetType()
+        if gt == GeomAbs_Cylinder:
+            cyl = s.Cylinder()
+            if is_hole(s, cyl):
+                ax = cyl.Axis(); loc = ax.Location(); dd = ax.Direction()
+                holes.append({"radius": round(cyl.Radius(), 4),
+                              "axis_dir": [round(dd.X(), 4), round(dd.Y(), 4), round(dd.Z(), 4)],
+                              "center": [round(loc.X(), 4), round(loc.Y(), 4), round(loc.Z(), 4)]})
+            else:
+                ext_cyl += 1
+        elif gt == GeomAbs_Plane:
             n_plane += 1
     print(json.dumps({
         "ok": True, "format": ext.lstrip("."),
         "bbox": [round(v, 4) for v in (xmin, ymin, zmin, xmax, ymax, zmax)],
         "dims": [round(xmax - xmin, 4), round(ymax - ymin, 4), round(zmax - zmin, 4)],
         "volume": round(vol, 4),
-        "solids": len(shape.Solids()), "faces": len(faces),
-        "planar_faces": n_plane, "cylindrical_faces": len(holes),
-        "holes": holes,
+        "solids": len(solids), "faces": len(faces),
+        "planar_faces": n_plane, "external_cylinders": ext_cyl,
+        "cylindrical_faces": len(holes), "holes": holes,
     }))
 except Exception as e:
     print(json.dumps({"ok": False, "error": "brep parse failed: %s" % e})); sys.exit(0)
@@ -107,7 +141,7 @@ except Exception as e:
 
 
 def read_brep(path: str, timeout: float = 120.0) -> dict[str, Any]:
-    """B-rep (STEP/IGES) summary + cylindrical hole candidates. Runs OCC in a subprocess so an
+    """B-rep (STEP/IGES) summary + internal-cylinder hole detection. Runs OCC in a subprocess so an
     OCC crash on malformed input cannot take down the caller (mirrors cadquery_backend.py)."""
     p = Path(path).expanduser()
     if not p.is_file():

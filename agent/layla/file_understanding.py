@@ -134,6 +134,56 @@ def _analyze_ipynb(content: str) -> dict:
     return out
 
 
+def _analyze_geometry3d(path: Path) -> dict:
+    """Real 3D read (STEP/IGES B-rep, STL/OBJ mesh) + feature recognition (Phase 2/3).
+    Falls back to intent-only if the file is missing or the geometry libs are unavailable."""
+    base = _intent_from_extension(path.suffix, path)
+    if not path or not path.exists():
+        return base
+    try:
+        from layla.geometry.feature_recognition import recognize_features
+        from layla.geometry.geometry_read import read_geometry
+        g = read_geometry(str(path))
+        if not g.get("ok"):
+            base["read_error"] = g.get("error", "read failed")
+            return base
+        for k in ("dimension", "dims", "bbox", "volume", "solids", "faces",
+                  "cylindrical_faces", "planar_faces", "holes", "watertight",
+                  "printable", "triangles"):
+            if k in g:
+                base[k] = g[k]
+        rec = recognize_features(g)
+        base["features"] = {
+            "hole_count": rec["hole_count"],
+            "hole_size_groups": rec["hole_size_groups"],
+            "patterns": rec["patterns"],
+            "pockets": rec["pockets"],
+        }
+    except Exception as e:  # noqa: BLE001 - analysis must never raise
+        logger.debug("_analyze_geometry3d failed: %s", e)
+        base["read_error"] = str(e)
+    return base
+
+
+def _analyze_gcode(content: str | bytes | None, path: Path | None = None) -> dict:
+    """Semantic G-code read (Phase 1): motion/extent/depths/runtime/crash-risk + a lint pass."""
+    text = content if isinstance(content, str) else (content.decode("utf-8", "replace") if content else "")
+    if not text and path and path.exists():
+        try:
+            text = path.read_text("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            text = ""
+    out = {"format": "G-code", "intent": "CNC program; machine intent"}
+    try:
+        from layla.geometry.machining_ir import parse_gcode_semantics, validate_gcode_text
+        out["semantics"] = parse_gcode_semantics(text)
+        lint = validate_gcode_text(text)
+        out["lint"] = {"ok": lint.get("ok"), "errors": lint.get("errors", []), "warnings": lint.get("warnings", [])}
+    except Exception as e:  # noqa: BLE001
+        logger.debug("_analyze_gcode failed: %s", e)
+    return out
+
+
 def _intent_from_extension(ext: str, path: Path) -> dict:
     """Binary or opaque format: format + intent from North Star map."""
     ext = ext.lower()
@@ -170,6 +220,10 @@ def analyze_file(file_path: str | Path = "", content: str | bytes | None = None)
         return _analyze_json(content if isinstance(content, str) else content.decode("utf-8", errors="replace"))
     if ext == ".ipynb":
         return _analyze_ipynb(content if isinstance(content, str) else content.decode("utf-8", errors="replace"))
+    if ext in (".step", ".stp", ".iges", ".igs", ".stl", ".obj"):
+        return _analyze_geometry3d(path or Path(str(file_path) or ""))
+    if ext in (".nc", ".gcode", ".tap"):
+        return _analyze_gcode(content, path)
     if ext in _FILE_INTENT:
         return _intent_from_extension(ext, path or Path(""))
     return {"format": ext or "unknown", "intent": "Unknown format; describe from context"}

@@ -144,6 +144,58 @@ def geometry_extract_machining_ir(dxf_path: str) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def geometry_read_file(path: str) -> dict:
+    """
+    Read a geometry file into a structured summary Layla can reason about (Phase 2/3).
+    STEP/IGES -> B-rep (bbox, volume, holes with radius/axis/center); STL/OBJ -> mesh
+    (bbox, volume, watertight/printable); DXF -> 2D machining IR. Adds recognized features
+    (hole size-groups, bolt circles, rectangular/linear patterns, pockets). Read-only; not
+    CAM/collision-certified.
+    """
+    from layla.geometry.feature_recognition import recognize_features
+    from layla.geometry.geometry_read import read_geometry
+
+    p = Path(path).expanduser().resolve()
+    if not inside_sandbox(p):
+        return {"ok": False, "error": "Path must be inside sandbox"}
+    if not p.is_file():
+        return {"ok": False, "error": "geometry file not found"}
+    g = read_geometry(str(p))
+    if not g.get("ok"):
+        return g
+    try:
+        g["recognized_features"] = recognize_features(g)
+    except Exception as e:  # noqa: BLE001
+        g["recognized_features"] = {"error": str(e)}
+    g["disclaimer"] = "Interpretive read for planning/handoff; not CAM/collision-certified."
+    return g
+
+
+def gcode_analyze(path: str) -> dict:
+    """
+    Read a G-code / NC program (.nc/.gcode/.tap) into a SEMANTIC summary (Phase 1): units, cut vs
+    rapid distance, XYZ extent, distinct depth passes, tools, spindle, runtime estimate, and
+    crash-risk rapids (traverse/plunge below Z0). Includes a structural lint. Read-only; NOT a
+    collision/gouge simulation.
+    """
+    from layla.geometry.machining_ir import parse_gcode_semantics, validate_gcode_text
+
+    p = Path(path).expanduser().resolve()
+    if not inside_sandbox(p):
+        return {"ok": False, "error": "Path must be inside sandbox"}
+    if not p.is_file():
+        return {"ok": False, "error": "gcode file not found"}
+    try:
+        text = p.read_text("utf-8", errors="replace")
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+    sem = parse_gcode_semantics(text)
+    lint = validate_gcode_text(text)
+    sem["lint"] = {"ok": lint.get("ok"), "errors": lint.get("errors", []), "warnings": lint.get("warnings", [])}
+    sem["disclaimer"] = "Interpretive read; NOT a collision/gouge simulation."
+    return sem
+
+
 def cam_feed_speed_hint(material: str = "aluminum", tool_diameter_mm: float = 3.0) -> dict:
     """
     Rule-based feeds/speeds nominal for planning (not machine certification).
