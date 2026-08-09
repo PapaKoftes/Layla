@@ -21,6 +21,16 @@ TOOLS = {
         "category": "fabrication",
         "description": "Extract machining intermediate representation from a geometry program for CAM processing.",
     },
+    "geometry_read_file": {
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "fabrication",
+        "description": "Read a geometry file (STEP/IGES/STL/OBJ/DXF) into a structured summary with recognized features (holes, bolt circles, rectangular/linear patterns, pockets). Read-only.",
+    },
+    "gcode_analyze": {
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "fabrication",
+        "description": "Read a G-code/NC program (.nc/.gcode/.tap) into a semantic summary: extent, cut vs rapid distance, depth passes, tools, runtime estimate, and crash-risk rapids; includes a structural lint. Read-only.",
+    },
     "validate_fabrication_bundle": {
         "dangerous": False, "require_approval": False, "risk_level": "low",
         "category": "fabrication",
