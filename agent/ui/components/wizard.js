@@ -64,6 +64,27 @@ function applyStep() {
   if (back) back.style.visibility = (step === 0) ? 'hidden' : 'visible';
   if (next) next.textContent = (step === 5) ? 'Enter' : 'Next';
 
+  // a11y: announce the step change and move focus into the new step so screen-reader and
+  // keyboard users track it (previously the step swapped silently with focus left behind).
+  try {
+    const TITLES = ['Meet Layla', 'Hardware & model', 'Workspace', 'Character creation', 'Choose a voice', 'Ready'];
+    let live = $('wizard-live');
+    if (!live) {
+      live = document.createElement('div');
+      live.id = 'wizard-live';
+      live.setAttribute('aria-live', 'polite');
+      live.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)';
+      ov.appendChild(live);
+    }
+    live.textContent = 'Step ' + (step + 1) + ' of 6: ' + (TITLES[step] || '');
+    const activeStep = ov.querySelector('.wizard-step.active');
+    if (activeStep) {
+      const h = activeStep.querySelector('h1, h2, h3') || activeStep;
+      h.setAttribute('tabindex', '-1');
+      setTimeout(() => { try { h.focus({ preventScroll: false }); } catch (_) {} }, 30);
+    }
+  } catch (_) {}
+
   if (step === 1) {
     try {
       if (typeof window.checkSetupStatus === 'function') {

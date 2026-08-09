@@ -185,6 +185,28 @@ function _renderSetupStatusError(res, body, err) {
     '<button type="button" class="tab-btn" style="margin-top:8px" onclick="checkSetupStatus()">Retry</button>';
 }
 
+// When a model is already provisioned, the standalone overlay just hides — but the wizard EMBEDS
+// this same overlay in step 1 (position:static), so it can't hide. Without this the step showed
+// stale "Detecting… / Loading catalog… / No model found" placeholders on any machine that already
+// had a model. Render a positive "model ready" confirmation instead.
+function _renderSetupModelReady(s) {
+  const name = s.model_filename || s.model || s.active_model ||
+    (Array.isArray(s.available_models) && s.available_models[0]) || 'your local model';
+  const sub = document.querySelector('#setup-overlay .setup-subtitle');
+  if (sub) { sub.textContent = 'Model ready — ' + name + '. You are all set; continue.'; sub.style.color = 'var(--success)'; }
+  const list = document.getElementById('setup-model-list');
+  if (list) {
+    list.innerHTML = '';
+    const box = document.createElement('div');
+    box.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid color-mix(in srgb, var(--success) 45%, var(--border));border-radius:8px;background:color-mix(in srgb, var(--success) 12%, transparent);font-size:0.8rem';
+    const chk = document.createElement('span'); chk.style.color = 'var(--success)'; chk.textContent = '✓';
+    const strong = document.createElement('strong'); strong.textContent = name;
+    box.append(chk, strong, document.createTextNode(' — installed and loaded. Nothing to download.'));
+    list.appendChild(box);
+  }
+  const dl = document.getElementById('setup-download-btn'); if (dl) { dl.disabled = true; dl.style.display = 'none'; }
+}
+
 export async function checkSetupStatus() {
   const overlay = document.getElementById('setup-overlay');
   try {
@@ -192,6 +214,7 @@ export async function checkSetupStatus() {
     const s = await res.json().catch(() => null);
     if (!res.ok || !s) { _renderSetupStatusError(res, s, null); return; }
     if (s.ready && s.model_found) {
+      try { renderSetupHardware(s.hardware || {}); _renderSetupModelReady(s); } catch (_) {}
       if (overlay) overlay.classList.remove('visible');
       maybeStartSetupProfiles();
       return;
