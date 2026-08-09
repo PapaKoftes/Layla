@@ -326,6 +326,23 @@ header .title { color: var(--text); font-weight: 700; }
 }
 .header-overflow-menu button:hover .menu-ico, .header-overflow-menu a:hover .menu-ico { color: var(--accent-text); }
 
+/* ── First-run wizard + tour: theme-aware chrome ──────────────────────────────
+   Legacy layla.css hardcodes a dark gradient for these surfaces (unreadable in
+   Soft Day, low-contrast in Obsidian). Rebuild loads last, so these token-based
+   rules win. Keep the backdrop a neutral scrim that dims any ground. */
+#wizard-overlay { background: rgba(0, 0, 0, 0.62); }
+.wizard-modal {
+  background: var(--surface);
+  border-color: var(--border-2);
+  box-shadow: 0 18px 80px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border);
+}
+.wizard-head { border-bottom-color: var(--border); }
+.wizard-actions { border-top-color: var(--border); }
+.tour-card { background: var(--surface); color: var(--text); border-color: var(--asp); }
+/* The wizard Next/Enter and tour Done buttons used --asp (the aspect hue), which is a
+   dark red on the Obsidian black ground; use the theme accent so they stay high-contrast. */
+#wizard-next-btn, .tour-done-btn { background: var(--accent) !important; border-color: var(--accent) !important; color: #fff; }
+
 /* ── 5. Sidebar — conversations, voices, nav, dashboard ──────────────────── */
 .chat-rail-new {
   background: var(--accent-soft);

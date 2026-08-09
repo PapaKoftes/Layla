@@ -496,7 +496,17 @@ export function initCharacterCreator() {
 
   loadCharacterData().then(function () {
     if (_tutorialState && !_tutorialState.tutorial_complete && _tutorialState.wizard_complete) {
-      setTimeout(function () { startTutorial(); }, 1500);
+      // Coordinate with the rest of first-run: this used to fire on a bare 1500ms timer and could
+      // STACK on top of the setup wizard / tour / onboarding interview. Wait until first-run has
+      // released (_laylaFirstRunClaim) and no other intro overlay is on screen, then start.
+      var tries = 0;
+      (function waitForCalm() {
+        var claim = (typeof window !== 'undefined') ? window._laylaFirstRunClaim : undefined;
+        var otherUp = !!document.querySelector(
+          '#wizard-overlay.visible, #tour-overlay.visible, #onboarding-overlay.visible, #welcome.visible, #setupwiz.visible');
+        if ((!claim || claim === 'released') && !otherUp) { startTutorial(); }
+        else if (tries++ < 240) { setTimeout(waitForCalm, 500); }  // give up quietly after ~2 min
+      })();
     }
   }).catch(function () {});
 }
