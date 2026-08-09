@@ -6,6 +6,7 @@
  */
 
 import { escapeHtml, showToast, laylaConfirm } from '../services/utils.js';
+import { overlayManager } from '../core/overlay.js';
 
 // i18n: window.t is installed by ui/core/i18n.js init. Fall back to the key's default if it isn't
 // ready yet (never render "undefined"). Keys live under settings.* in ui/locales/*.json.
@@ -144,7 +145,10 @@ function _sameValue(a, b) {
 export async function openSettings() {
   const ov = document.getElementById('settings-overlay');
   if (!ov) return;
-  ov.classList.add('visible');
+  // Route through the unified overlay manager so Settings gets Escape-to-close, a focus trap,
+  // scroll-lock and z-index tiering like every other modal (it used to bypass all of that).
+  try { if (!overlayManager.open('settings')) ov.classList.add('visible'); }
+  catch (_) { ov.classList.add('visible'); }
   // Populate the appearance controls from the server. Without this the panel renders its defaults over
   // whatever is actually stored, so a saved text size looks unsaved and re-saving silently reverts it.
   loadAppearance();
@@ -226,6 +230,7 @@ export async function openSettings() {
 }
 
 export function closeSettings() {
+  try { if (overlayManager.close('settings')) return; } catch (_) {}
   const ov = document.getElementById('settings-overlay');
   if (ov) ov.classList.remove('visible');
 }

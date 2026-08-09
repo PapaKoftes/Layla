@@ -213,20 +213,20 @@
 
 <!-- Overflow menu (header ⋮ button) -->
 <nav id="header-overflow-menu" class="header-overflow-menu" aria-label="More actions" style="display:none">
-  <button data-action="exportChat toggleHeaderOverflow">📤 Export chat</button>
-  <a href="/system_export" target="_blank" data-action="toggleHeaderOverflow">⊕ System export</a>
-  <a href="/memory/export" download data-action="toggleHeaderOverflow">⬇ Memory bundle</a>
-  <button data-action="laylaImportMemoryBundle toggleHeaderOverflow">⬆ Import bundle</button>
+  <button data-action="exportChat toggleHeaderOverflow"><span class="menu-ico">⤴</span> Export chat</button>
+  <a href="/system_export" target="_blank" data-action="toggleHeaderOverflow"><span class="menu-ico">⊕</span> System export</a>
+  <a href="/memory/export" download data-action="toggleHeaderOverflow"><span class="menu-ico">⤓</span> Memory bundle</a>
+  <button data-action="laylaImportMemoryBundle toggleHeaderOverflow"><span class="menu-ico">⤒</span> Import bundle</button>
   <hr>
-  <button data-action="retryLastMessage toggleHeaderOverflow">↻ Retry last</button>
-  <button data-action="clearChat toggleHeaderOverflow">🗑 Clear chat</button>
-  <button data-action="toggleComposePanel toggleHeaderOverflow">📝 Working notes</button>
+  <button data-action="retryLastMessage toggleHeaderOverflow"><span class="menu-ico">↻</span> Retry last</button>
+  <button data-action="clearChat toggleHeaderOverflow"><span class="menu-ico">⌫</span> Clear chat</button>
+  <button data-action="toggleComposePanel toggleHeaderOverflow"><span class="menu-ico">✎</span> Working notes</button>
   <hr>
-  <button data-action="openCharacterLab toggleHeaderOverflow">🎭 Character Lab</button>
-  <button data-action="openCliHelp toggleHeaderOverflow">⌘ Terminal</button>
-  <button data-action="toggleSidebarCompact toggleHeaderOverflow">◀ Compact sidebar</button>
-  <a href="/ctx_viz" target="_blank" data-action="toggleHeaderOverflow">📊 Context visualizer</a>
-  <button data-action="showKeyboardShortcutsSheet toggleHeaderOverflow">⌨ Shortcuts</button>
+  <button data-action="openCharacterLab toggleHeaderOverflow"><span class="menu-ico">⌬</span> Character Lab</button>
+  <button data-action="openCliHelp toggleHeaderOverflow"><span class="menu-ico">▤</span> Terminal</button>
+  <button data-action="toggleSidebarCompact toggleHeaderOverflow"><span class="menu-ico">⇤</span> Compact sidebar</button>
+  <a href="/ctx_viz" target="_blank" data-action="toggleHeaderOverflow"><span class="menu-ico">◫</span> Context visualizer</a>
+  <button data-action="showKeyboardShortcutsSheet toggleHeaderOverflow"><span class="menu-ico">⌨</span> Shortcuts</button>
 </nav>
 
 <div class="layout">
@@ -710,6 +710,26 @@
       </section>
 
       <section class="rcp-page" data-rcp="prefs" role="tabpanel" aria-hidden="true" id="panel-prefs" aria-labelledby="tab-prefs">
+
+        <!-- ═══ GROUP: Appearance & accessibility (the discoverable home for how it looks) ═══ -->
+        <details class="settings-accordion" open>
+          <summary class="settings-accordion-title">Appearance &amp; accessibility</summary>
+          <div class="settings-accordion-body">
+            <div class="option-row">
+              <span>Theme</span>
+              <div role="radiogroup" aria-label="Theme" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="dark" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('dark')"> Gothic</label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="light" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('light')"> Soft Day</label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="obsidian" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('obsidian')"> Obsidian</label>
+              </div>
+            </div>
+            <label class="option-row"><span>High contrast <small class="rta-muted" style="display:block;font-size:0.66rem">Full-strength text, stronger hairlines, no glow</small></span><input type="checkbox" data-a11y="contrast" style="accent-color:var(--accent)" onchange="window.laylaSetA11y&&window.laylaSetA11y('contrast',this.checked)"></label>
+            <label class="option-row"><span>Larger touch targets</span><input type="checkbox" data-a11y="targets" style="accent-color:var(--accent)" onchange="window.laylaSetA11y&&window.laylaSetA11y('targets',this.checked)"></label>
+            <label class="option-row"><span>High-legibility font</span><input type="checkbox" data-a11y="legible" style="accent-color:var(--accent)" onchange="window.laylaSetA11y&&window.laylaSetA11y('legible',this.checked)"></label>
+            <label class="option-row"><span>Underline links</span><input type="checkbox" data-a11y="underline" style="accent-color:var(--accent)" onchange="window.laylaSetA11y&&window.laylaSetA11y('underline',this.checked)"></label>
+            <p class="rta-muted" style="margin:4px 0 0;font-size:0.68rem">Theme &amp; accessibility apply instantly and save to this browser. Text size &amp; animation are under <strong>Settings ▸ Models &amp; appearance</strong>.</p>
+          </div>
+        </details>
 
         <!-- ═══ GROUP 0: Interface language ═══ -->
         <details class="settings-accordion" open>
@@ -1328,7 +1348,7 @@
 </div>
 
 <!-- ── Settings Modal ─────────────────────────────────────────────────── -->
-<div id="settings-overlay">
+<div id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
   <div class="settings-modal">
     <h2>⚙ Settings</h2>
     <div id="settings-form-container" class="settings-form-container">
@@ -1363,7 +1383,7 @@
       <span id="import-chat-msg" class="hint" style="margin-left:8px"></span>
     </div>
     <div class="settings-appearance" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
-      <div class="hint" style="margin-bottom:6px">Appearance / lite mode (writes <code>runtime_config.json</code>)</div>
+      <div class="hint" style="margin-bottom:6px">Avatar, text size, animation &amp; lite mode (writes <code>runtime_config.json</code>). <strong>Theme &amp; accessibility</strong> live in the ⚙ Settings panel ▸ Appearance.</div>
       <label style="display:block;margin:4px 0;font-size:0.75rem">Avatar seed <input id="ui_avatar_seed" type="text" style="width:100%;max-width:280px" placeholder="e.g. dicebear seed" /></label>
       <label style="display:block;margin:4px 0;font-size:0.75rem">Avatar style <input id="ui_avatar_style" type="text" style="width:100%;max-width:200px" placeholder="rings" /></label>
       <label style="display:block;margin:4px 0;font-size:0.75rem">Text size
@@ -1387,6 +1407,26 @@
       <button type="button" class="settings-save" style="margin-top:6px" data-action="saveAppearanceLite">Save appearance &amp; lite</button>
       <span id="appearance-save-msg" class="hint" style="margin-left:8px"></span>
     </div>
+    <script>
+    /* Keep the Theme radios + Accessibility checkboxes in sync with saved state,
+       independent of module load order (reads localStorage directly). Re-syncs the
+       radio when the header/topbar ◐ control cycles the theme (layla:theme event). */
+    (function(){
+      function syncAppearanceControls(){
+        try{
+          var th = localStorage.getItem('layla_theme') || 'dark';
+          var r = document.querySelector('input[name="layla_theme"][value="'+th+'"]'); if(r) r.checked = true;
+          var a = {}; try{ a = JSON.parse(localStorage.getItem('layla_a11y') || '{}'); }catch(_){}
+          ['contrast','targets','legible','underline'].forEach(function(k){
+            var el = document.querySelector('input[data-a11y="'+k+'"]'); if(el) el.checked = !!a[k];
+          });
+        }catch(_){}
+      }
+      if (document.readyState !== 'loading') syncAppearanceControls();
+      else document.addEventListener('DOMContentLoaded', syncAppearanceControls);
+      window.addEventListener('layla:theme', syncAppearanceControls);
+    })();
+    </script>
     <!-- BL-337 phone access. loadPhoneAccess()/copyPhoneUrl() shipped complete in settings-full.js
          and were exported to nobody, reaching for #phone-access-url / #phone-access-status which
          existed nowhere — the whole feature was two elements and a caller short of working. -->
@@ -1482,7 +1522,7 @@
 </div>
 
 <!-- Character Lab overlay (full-screen modal) -->
-<div id="character-lab-overlay" aria-hidden="true">
+<div id="character-lab-overlay" role="dialog" aria-modal="true" aria-label="Character Lab" aria-hidden="true">
   <div id="character-lab-container">
     <button type="button" id="charlab-close-btn" data-action="closeCharacterLab" aria-label="Close Character Lab">&times;</button>
     <div style="color:var(--text-dim);font-size:0.8rem">Loading Character Lab...</div>

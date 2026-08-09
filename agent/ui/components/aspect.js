@@ -251,10 +251,13 @@ export function setAspect(id, force) {
   // Update state (triggers compat bridge's property descriptor)
   appState.set('aspect.current', id);
 
-  // Update sidebar buttons
-  document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
+  // Update sidebar buttons (class + ARIA so the active aspect isn't conveyed by colour alone)
+  document.querySelectorAll('.aspect-btn').forEach(b => {
+    b.classList.remove('active');
+    b.setAttribute('aria-pressed', 'false');
+  });
   const btn = document.getElementById('btn-' + id);
-  if (btn) btn.classList.add('active');
+  if (btn) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); }
 
   // Reflect the active aspect in the collapsed sidebar summary (name · function).
   // BL-301: a custom aspect id is not in the built-in ASPECTS registry — fall back to the id

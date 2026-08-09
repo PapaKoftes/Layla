@@ -296,11 +296,63 @@ export function clearPendingImage() {
 
 try { window.laylaClearPendingImage = clearPendingImage; } catch (_) {}
 
-// ── Theme / Sidebar toggles ─────────────────────────────────────────────────
-export function toggleTheme() {
-  document.body.classList.toggle('theme-light');
-  try { localStorage.setItem('layla_theme', document.body.classList.contains('theme-light') ? 'light' : 'dark'); } catch (_) {}
+// ── Theme system ────────────────────────────────────────────────────────────
+// Three ships-in-the-box themes. 'dark' (Gothic, default) carries no class; the
+// others map to a body class defined in layla-rebuild.css. Backward-compatible
+// with the old 'light'/'dark' localStorage values.
+export const LAYLA_THEMES = ['dark', 'light', 'obsidian'];
+const THEME_CLASS = { dark: '', light: 'theme-light', obsidian: 'theme-obsidian' };
+const THEME_LABEL = { dark: 'Gothic Dark', light: 'Soft Day', obsidian: 'Obsidian' };
+const THEME_GLYPH = { dark: '◐', light: '☀', obsidian: '◑' };
+
+export function applyTheme(name) {
+  if (!Object.prototype.hasOwnProperty.call(THEME_CLASS, name)) name = 'dark';
+  const b = document.body;
+  b.classList.remove('theme-light', 'theme-obsidian');
+  if (THEME_CLASS[name]) b.classList.add(THEME_CLASS[name]);
+  try { localStorage.setItem('layla_theme', name); } catch (_) {}
+  // Reflect state on every theme control (header + topbar share data-action).
+  document.querySelectorAll('[data-action~="toggleTheme"]').forEach(function (btn) {
+    btn.title = 'Theme: ' + THEME_LABEL[name] + ' — click to cycle';
+    btn.setAttribute('aria-label', 'Theme: ' + THEME_LABEL[name] + ', click to cycle');
+    if (btn.textContent && THEME_GLYPH[name]) btn.textContent = THEME_GLYPH[name];
+  });
+  // Let aspect coloring re-derive for the new ground (obsidian uses bright hues).
+  try { window.dispatchEvent(new CustomEvent('layla:theme', { detail: { theme: name } })); } catch (_) {}
+  return name;
 }
+try { window.laylaApplyTheme = applyTheme; } catch (_) {}
+
+export function toggleTheme() {
+  let cur = 'dark';
+  try { cur = localStorage.getItem('layla_theme') || 'dark'; } catch (_) {}
+  if (LAYLA_THEMES.indexOf(cur) === -1) cur = 'dark';   // migrate any legacy value
+  return applyTheme(LAYLA_THEMES[(LAYLA_THEMES.indexOf(cur) + 1) % LAYLA_THEMES.length]);
+}
+
+// ── Accessibility toggles ─────────────────────────────────────────────────────
+// User-controlled (not just OS prefers-*): high contrast, larger targets, legible
+// font, underline links. Persisted as one JSON blob; applied as body classes that
+// layla-rebuild.css styles. Motion + text-size stay on the existing appearance
+// channel (data-anim / html font-size) to avoid a second source of truth.
+const A11Y_FLAGS = ['contrast', 'targets', 'legible', 'underline'];
+export function getA11y() {
+  try { return Object.assign({}, JSON.parse(localStorage.getItem('layla_a11y') || '{}')); }
+  catch (_) { return {}; }
+}
+export function applyA11y(flags) {
+  const f = flags || getA11y();
+  A11Y_FLAGS.forEach(function (k) { document.body.classList.toggle('a11y-' + k, !!f[k]); });
+  return f;
+}
+export function setA11y(key, value) {
+  const f = getA11y();
+  f[key] = !!value;
+  try { localStorage.setItem('layla_a11y', JSON.stringify(f)); } catch (_) {}
+  applyA11y(f);
+  return f;
+}
+try { window.laylaApplyA11y = applyA11y; window.laylaSetA11y = setA11y; window.laylaGetA11y = getA11y; } catch (_) {}
 
 export function toggleSidebarCompact() {
   const sb = document.querySelector('.sidebar');

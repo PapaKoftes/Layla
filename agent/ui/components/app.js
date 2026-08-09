@@ -1000,12 +1000,16 @@ export function refreshContentPolicyToggles() {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 export function initApp() {
-  // Theme restore
+  // Theme restore (3-way: dark/Gothic default, light/Soft Day, obsidian)
   try {
-    var th = localStorage.getItem('layla_theme');
+    var th = localStorage.getItem('layla_theme') || 'dark';
+    document.body.classList.remove('theme-light', 'theme-obsidian');
     if (th === 'light') document.body.classList.add('theme-light');
-    else document.body.classList.remove('theme-light');
+    else if (th === 'obsidian') document.body.classList.add('theme-obsidian');
+    if (typeof window.laylaApplyTheme === 'function') window.laylaApplyTheme(th); // sync control labels + aspect hues
   } catch (_e) { console.debug('app:', _e); }
+  // Accessibility restore (high-contrast / larger-targets / legible / underline / text-scale)
+  try { if (typeof window.laylaApplyA11y === 'function') window.laylaApplyA11y(); } catch (_e) {}
 
   // Tool approval bypass toggle
   try {
