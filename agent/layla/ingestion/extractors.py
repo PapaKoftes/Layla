@@ -79,10 +79,22 @@ def _try_docling(file_path: Path, suffix: str) -> str:
     return ""
 
 
-def _read_plain(file_path: Path) -> str:
-    """Read file as UTF-8 text; return empty string on binary/decode errors."""
+# Memory-safety caps: a multi-GB file/PDF/log must not OOM the process (the pipeline chunks the
+# whole returned string). Generous enough for real documents.
+_MAX_EXTRACT_BYTES = 8_000_000     # ~8 MB of raw text read from a plain/HTML file
+_MAX_EXTRACT_CHARS = 4_000_000     # cap on assembled extracted text (e.g. PDF)
+_MAX_PDF_PAGES = 500
+
+
+def _read_plain(file_path: Path, max_bytes: int = _MAX_EXTRACT_BYTES) -> str:
+    """Read file as UTF-8 text (size-capped); return empty string on binary/decode errors."""
     try:
-        return file_path.read_text(encoding="utf-8", errors="replace")
+        with file_path.open("rb") as fh:
+            raw = fh.read(max_bytes + 1)
+        text = raw[:max_bytes].decode("utf-8", errors="replace")
+        if len(raw) > max_bytes:
+            text += "\n\n[...truncated: file exceeds extract size cap...]"
+        return text
     except Exception as exc:
         logger.debug("_read_plain failed for %s: %s", file_path, exc)
         return ""
@@ -118,8 +130,15 @@ def _read_pdf(file_path: Path) -> str:
     try:
         from pypdf import PdfReader
         reader = PdfReader(str(file_path))
-        pages = [page.extract_text() or "" for page in reader.pages]
-        return "\n\n".join(pages).strip()
+        pages = []
+        total = 0
+        for i, page in enumerate(reader.pages):
+            if i >= _MAX_PDF_PAGES or total >= _MAX_EXTRACT_CHARS:
+                break
+            t = page.extract_text() or ""
+            pages.append(t)
+            total += len(t)
+        return "\n\n".join(pages).strip()[:_MAX_EXTRACT_CHARS]
     except ImportError:
         logger.debug("pypdf not installed; skipping PDF extraction for %s", file_path)
         return ""
