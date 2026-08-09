@@ -721,6 +721,10 @@
                 <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="dark" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('dark')"> Gothic</label>
                 <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="light" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('light')"> Soft Day</label>
                 <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="obsidian" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('obsidian')"> Obsidian</label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="ivory" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('ivory')"> Ivory</label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="amber" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('amber')"> Amber</label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="aspectual" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('aspectual')"> Aspectual</label>
+                <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;border:1px solid var(--border-2);border-radius:7px;padding:4px 8px;cursor:pointer"><input type="radio" name="layla_theme" value="custom" style="accent-color:var(--accent)" onchange="window.laylaApplyTheme&&window.laylaApplyTheme('custom')"> ✎ Custom</label>
               </div>
             </div>
             <label class="option-row"><span>High contrast <small class="rta-muted" style="display:block;font-size:0.66rem">Full-strength text, stronger hairlines, no glow</small></span><input type="checkbox" data-a11y="contrast" style="accent-color:var(--accent)" onchange="window.laylaSetA11y&&window.laylaSetA11y('contrast',this.checked)"></label>
@@ -728,6 +732,58 @@
             <label class="option-row"><span>High-legibility font</span><input type="checkbox" data-a11y="legible" style="accent-color:var(--accent)" onchange="window.laylaSetA11y&&window.laylaSetA11y('legible',this.checked)"></label>
             <label class="option-row"><span>Underline links</span><input type="checkbox" data-a11y="underline" style="accent-color:var(--accent)" onchange="window.laylaSetA11y&&window.laylaSetA11y('underline',this.checked)"></label>
             <p class="rta-muted" style="margin:4px 0 0;font-size:0.68rem">Theme &amp; accessibility apply instantly and save to this browser. Text size &amp; animation are under <strong>Settings ▸ Models &amp; appearance</strong>.</p>
+            <details style="margin-top:10px;border:1px solid var(--border);border-radius:8px;padding:0 8px">
+              <summary style="cursor:pointer;font-size:0.74rem;padding:8px 0">✎ Build your own theme</summary>
+              <div style="padding:0 0 10px">
+                <p class="rta-muted" style="font-size:0.68rem;margin:0 0 8px">Pick colours — they apply live and switch you to the <strong>Custom</strong> theme. Saved to this browser.</p>
+                <div id="theme-builder-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:5px 14px"></div>
+                <button type="button" class="settings-save" id="theme-builder-reset" style="margin-top:10px">Reset to Gothic</button>
+              </div>
+            </details>
+            <script>
+            /* In-app Theme Builder: builds a colour-picker per token, wired to the custom-theme
+               engine in components/input.js (window.layla* helpers). Self-contained, load-order-safe. */
+            (function () {
+              var LABELS = {'--bg':'Ground','--bg2':'Ground 2','--surface':'Surface','--surface-2':'Surface 2','--surface-3':'Surface 3','--border':'Border','--border-2':'Border 2','--code-bg':'Code bg','--text':'Text','--text-dim':'Text dim','--text-faint':'Text faint','--accent':'Accent','--accent-2':'Accent 2','--accent-text':'Accent text'};
+              function toHex(v){ v=(v||'').trim();
+                if(/^#[0-9a-f]{6}$/i.test(v)) return v;
+                if(/^#[0-9a-f]{3}$/i.test(v)) return '#'+v.slice(1).split('').map(function(c){return c+c;}).join('');
+                var m=v.match(/rgba?\((\d+)[ ,]+(\d+)[ ,]+(\d+)/);
+                if(m) return '#'+[m[1],m[2],m[3]].map(function(n){return ('0'+parseInt(n,10).toString(16)).slice(-2);}).join('');
+                return '#000000'; }
+              function build(){
+                var grid=document.getElementById('theme-builder-grid'); if(!grid||grid.dataset.built) return;
+                var toks=window.laylaCustomTokens; if(!toks||!toks.length){ setTimeout(build,300); return; }
+                grid.dataset.built='1';
+                var custom=(window.laylaGetCustomTheme&&window.laylaGetCustomTheme())||{}, cs=getComputedStyle(document.body);
+                toks.forEach(function(k){
+                  var row=document.createElement('label');
+                  row.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:0.7rem';
+                  var span=document.createElement('span'); span.textContent=LABELS[k]||k;
+                  var inp=document.createElement('input'); inp.type='color'; inp.setAttribute('data-token',k);
+                  inp.setAttribute('aria-label',LABELS[k]||k);
+                  inp.style.cssText='inline-size:32px;block-size:22px;padding:0;border:1px solid var(--border-2);border-radius:5px;background:none;cursor:pointer';
+                  inp.value=toHex(custom[k]||cs.getPropertyValue(k));
+                  inp.addEventListener('input',function(){ if(window.laylaSetCustomToken) window.laylaSetCustomToken(k,inp.value); });
+                  row.appendChild(span); row.appendChild(inp); grid.appendChild(row);
+                });
+              }
+              function reseed(){
+                var grid=document.getElementById('theme-builder-grid'); if(!grid) return;
+                var custom=(window.laylaGetCustomTheme&&window.laylaGetCustomTheme())||{}, cs=getComputedStyle(document.body);
+                grid.querySelectorAll('input[data-token]').forEach(function(inp){ var k=inp.getAttribute('data-token'); inp.value=toHex(custom[k]||cs.getPropertyValue(k)); });
+              }
+              if (document.readyState!=='loading') build(); else document.addEventListener('DOMContentLoaded', build);
+              document.addEventListener('click', function(e){
+                if(e.target && e.target.id==='theme-builder-reset'){
+                  if(window.laylaResetCustomTheme) window.laylaResetCustomTheme();
+                  if(window.laylaApplyTheme) window.laylaApplyTheme('dark');
+                  reseed();
+                }
+              });
+              window.addEventListener('layla:theme', reseed);
+            })();
+            </script>
           </div>
         </details>
 
