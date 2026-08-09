@@ -377,6 +377,16 @@ def _handle_search_codebase(intent: str, goal: str, ctx: DispatchContext) -> Dis
 # RUN PYTHON
 # ===================================================================
 
+def _run_python_code(decision, goal: str) -> str:
+    """Prefer the model's structured `code` argument over executing the whole goal string.
+    run_python previously ran the entire goal verbatim (injection-shaped: prompt-injected goal text
+    became executed code); use the validated `args.code` when present, fall back to goal only if the
+    model gave no explicit code field."""
+    args = (decision.get("args") or {}) if decision else {}
+    c = args.get("code")
+    return c if isinstance(c, str) and c.strip() else goal
+
+
 def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, rs, TOOLS = _imports()
     state, cfg, workspace, decision = ctx.state, ctx.cfg, ctx.workspace, ctx.decision
@@ -405,7 +415,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
             return DispatchResult(handled=True, flow="continue", goal=_rebuild_goal(state))
 
         # Lab execution
-        code = goal
+        code = _run_python_code(decision, goal)
         state["tool_calls"] += 1
         al._admin_pre_mutate(cfg, workspace, "run_python", (code or "")[:120])
         result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)
@@ -434,7 +444,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         state["status"] = "finished"
         return DispatchResult(handled=True, flow="break", goal=goal)
 
-    code = goal
+    code = _run_python_code(decision, goal)
     state["tool_calls"] += 1
     al._admin_pre_mutate(cfg, workspace, "run_python", (code or "")[:120])
     result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)

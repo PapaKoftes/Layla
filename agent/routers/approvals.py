@@ -98,9 +98,10 @@ def approve(req: dict, request: Request):
                 grant_scope = "command" if args.get("command") else "tool"
                 grant_args = {}
                 if grant_scope == "command":
-                    cmd_parts = args.get("command", "").split()
-                    # Use first two tokens as a glob pattern (e.g. "git status*")
-                    grant_args["command"] = " ".join(cmd_parts[:2]) + "*" if len(cmd_parts) > 1 else args.get("command", "*")
+                    # Grant ONLY the exact command approved. This previously stored a first-two-token
+                    # prefix glob ("git status*"), which also auto-approved "git status <anything>"
+                    # (e.g. "git status && rm -rf ...") for the rest of the session.
+                    grant_args["command"] = (args.get("command") or "").strip()
                 add_session_grant(tool_name, scope=grant_scope, args=grant_args)
             except Exception:
                 pass

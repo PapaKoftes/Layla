@@ -391,7 +391,13 @@ async def agent(req: AgentRequest, request: Request):
             logger.warning("content_guard: /agent input blocked tier=%s cat=%s", _in.tier, _in.category)
             return _blocked_input_response(_blk_in(_in))
     except Exception as _cg_exc:
-        logger.debug("content_guard /agent input check skipped: %s", _cg_exc)
+        # FAIL CLOSED: a safety guard that errors must not silently pass the input through to
+        # generation (this branch previously logged and proceeded — audit finding: fail-open).
+        logger.error("content_guard /agent input check FAILED - declining (fail-closed): %s", _cg_exc)
+        return _blocked_input_response(
+            "I couldn't verify this request against the safety policy, so I've declined it. "
+            "Please try again or rephrase."
+        )
 
     try:
         if (workspace_root or "").strip():
@@ -1534,8 +1540,13 @@ async def agent(req: AgentRequest, request: Request):
             logger.warning("content_guard: /agent output blocked tier=%s cat=%s", _out.tier, _out.category)
             response_text = _blk_out(_out)
             _json_blocked = True
-    except Exception:
-        pass
+    except Exception as _cg_out_exc:
+        # FAIL CLOSED (symmetric with the input guard): if the output safety check errors, do not
+        # ship an unverified model response — withhold it (this branch previously did `pass`).
+        logger.error("content_guard /agent output check FAILED - withholding output (fail-closed): %s", _cg_out_exc)
+        response_text = ("I generated a response but couldn't verify it against the safety policy, "
+                         "so I've withheld it. Please try again.")
+        _json_blocked = True
 
     commit_turn(
         conversation_id, goal, response_text,

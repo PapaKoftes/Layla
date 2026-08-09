@@ -133,8 +133,10 @@ def pip_list(cwd: str = "") -> dict:
 
 def pip_install(packages: str, cwd: str = "", upgrade: bool = False) -> dict:
     """Install pip package(s). packages: space-separated names or path to requirements.txt."""
-    cwd_path = Path(cwd) if cwd else Path.cwd()
-    if cwd and not inside_sandbox(cwd_path):
+    # Always confine cwd (default process cwd included) — previously the sandbox check was skipped
+    # entirely when `cwd` was empty, leaving pip running with an unconfined working directory.
+    cwd_path = (Path(cwd) if cwd else Path.cwd()).resolve()
+    if not inside_sandbox(cwd_path):
         return {"ok": False, "error": "cwd outside sandbox"}
     argv = [sys.executable, "-m", "pip", "install"]
     if upgrade:
