@@ -99,8 +99,8 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "key": "initiative_project_proposals_enabled",
         "type": "boolean",
         "category": "safety",
-        "default": False,
-        "hint": "Let scheduled maintenance draft unprompted project proposals from your recent work. Text-only; no tools run. Off = she only proposes when asked.",
+        "default": True,
+        "hint": "On by default: scheduled maintenance drafts unprompted project proposals from your recent work. Text-only; no tools run; acting on one still needs approval. Turn off to only propose when asked.",
     },
     # The autonomy ceiling. In EDITABLE_SCHEMA because it is the ONLY thing left that can hold
     # an initiative or coordinator capability below the setting that switches it on — and until

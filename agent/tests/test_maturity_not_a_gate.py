@@ -56,6 +56,7 @@ FORMERLY_GATED = (
 # test_example_config_matches_shipped_defaults.py applies to the example file.
 GATED_DEFAULTS = {k: False for k in FORMERLY_GATED}
 GATED_DEFAULTS["inline_initiative_enabled"] = True
+GATED_DEFAULTS["initiative_project_proposals_enabled"] = True  # owner flip: proactive proposals now ship ON (text-only; approval still gates any action)
 
 # Of those six, the ones that a code path outside runtime_safety/config_schema actually READS.
 # `autonomous_research_mode` is excluded and that exclusion is load-bearing — see
