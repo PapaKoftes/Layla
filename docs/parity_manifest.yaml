@@ -1,0 +1,107 @@
+# parity_manifest.yaml — anti-doc-drift anchors.
+#
+# Guarded by agent/tests/test_parity_manifest.py, which asserts (1) this file exists, (2) every
+# `paths[].relpath` is a real file, and (3) every `symbols[].module:attr` imports and resolves.
+# The point is to fail CI the moment a rename/move orphans a load-bearing claim the docs make, so
+# the docs and the code cannot silently diverge (a failure mode this repo has hit repeatedly — see
+# the stale paths in CHANGELOG.md that the big rearchitecture moved).
+#
+# RULES:
+#  - Only add an entry once it is verified present; a manifest that lists a moved path is worse than
+#    no manifest (it makes the guard itself the liar).
+#  - relpath is repo-root-relative. module/attr are resolved with agent/ on sys.path (as the tests do),
+#    so modules are the agent-relative dotted names ("orchestrator", "services.safety.content_guard").
+#  - When you MOVE or RENAME one of these, update this file in the same commit. That is the whole job.
+
+version: 1
+description: >-
+  Load-bearing files and public symbols whose location the documentation and the runtime both depend
+  on. Verified against the tree on 2026-08-10.
+
+paths:
+  # Entry points / configuration
+  - relpath: agent/main.py
+    why: FastAPI app + server entry point.
+  - relpath: agent/orchestrator.py
+    why: aspect selection (select_aspect) — routing of a turn to a persona.
+  - relpath: agent/runtime_safety.py
+    why: runtime config loader + gated-capability defaults.
+  - relpath: agent/config_schema.py
+    why: config schema / defaults surface.
+  - relpath: agent/runtime_config.example.json
+    why: shipped example config; the shape a fresh install starts from.
+  # Prompt assembly (the capability-manifest injection path)
+  - relpath: agent/services/prompts/prompt_builder.py
+    why: build_core_sys_parts + the capability-manifest core reader.
+  - relpath: agent/services/prompts/system_head_builder.py
+    why: build_system_head — the budgeted head assembler under test in test_capability_manifest.
+  - relpath: .identity/capabilities.md
+    why: the verified capability manifest injected on capability questions (must ship on clone).
+  # Safety
+  - relpath: agent/services/safety/content_guard.py
+    why: deterministic pre/post content filter (fail-closed).
+  - relpath: agent/services/tools/tool_dispatch.py
+    why: tool dispatch seam (run_python code preference, approval routing).
+  - relpath: agent/routers/agent.py
+    why: POST /agent — the main turn router (fail-closed input/output guards).
+  - relpath: agent/routers/approvals.py
+    why: approval grants (exact-command session grants).
+  - relpath: agent/layla/tools/registry.py
+    why: the authoritative TOOLS registry.
+  # Fabrication read-layer (Phases 1-4)
+  - relpath: agent/layla/file_understanding.py
+    why: file analysis dispatch (geometry / g-code / documents).
+  - relpath: agent/layla/geometry/geometry_read.py
+    why: read_geometry — mesh + B-rep readers.
+  - relpath: agent/layla/geometry/machining_ir.py
+    why: parse_gcode_semantics — G-code semantic reader.
+  - relpath: agent/layla/geometry/feature_recognition.py
+    why: recognize_features — hole/pattern/pocket recognition.
+  # Docs the guards and process reference
+  - relpath: docs/VERIFICATION.md
+    why: the CI-parity pytest command + release verification steps.
+  - relpath: README.md
+    why: top-level project description kept in parity with the architecture.
+  - relpath: CHANGELOG.md
+    why: release ledger.
+
+symbols:
+  - module: orchestrator
+    attr: select_aspect
+    why: turn -> aspect routing.
+  - module: runtime_safety
+    attr: load_config
+    why: the single config accessor everything reads.
+  - module: services.safety.content_guard
+    attr: check_input
+    why: pre-model content guard.
+  - module: services.safety.content_guard
+    attr: check_output
+    why: post-model content guard.
+  - module: services.prompts.prompt_builder
+    attr: build_core_sys_parts
+    why: assembles the core system parts (incl. capability manifest).
+  - module: services.prompts.system_head_builder
+    attr: build_system_head
+    why: budgeted head assembler (capability-ceiling tests drive this).
+  - module: services.retrieval
+    attr: retrieve_relevant_memory
+    why: hybrid retrieval entry point (vector + BM25/FTS + rerank).
+  - module: services.memory.memory_router
+    attr: save_learning
+    why: the durable-learning write path.
+  - module: layla.tools.registry
+    attr: TOOLS
+    why: the authoritative tool registry (count guarded elsewhere).
+  - module: layla.file_understanding
+    attr: analyze_file
+    why: file-analysis dispatch.
+  - module: layla.geometry.geometry_read
+    attr: read_geometry
+    why: mesh/B-rep geometry reader.
+  - module: layla.geometry.machining_ir
+    attr: parse_gcode_semantics
+    why: G-code semantic reader.
+  - module: layla.geometry.feature_recognition
+    attr: recognize_features
+    why: machinable-feature recognition.

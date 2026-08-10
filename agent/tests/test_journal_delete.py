@@ -2,13 +2,14 @@
 delete path works end-to-end at the engine level (which routes to the DB)."""
 import sys
 from pathlib import Path
+
 AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
 def test_journal_add_then_delete(isolated_db):
-    from services.infrastructure.journal_engine import add_entry, list_entries, delete_entry
+    from services.infrastructure.journal_engine import add_entry, delete_entry, list_entries
     r = add_entry("note", "a disposable test entry")
     assert r.get("ok") and r["entry"].get("id")
     eid = r["entry"]["id"]

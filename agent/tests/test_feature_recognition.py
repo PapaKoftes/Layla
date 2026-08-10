@@ -12,8 +12,12 @@ if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 from layla.geometry.feature_recognition import (  # noqa: E402
-    detect_bolt_circle, detect_linear_array, detect_rectangular_pattern,
-    detect_pockets, group_holes_by_size, recognize_features,
+    detect_bolt_circle,
+    detect_linear_array,
+    detect_pockets,
+    detect_rectangular_pattern,
+    group_holes_by_size,
+    recognize_features,
 )
 
 

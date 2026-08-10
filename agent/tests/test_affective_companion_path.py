@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from services.personality.affect_detect import is_affective_turn
 
-
 # --- detector ---------------------------------------------------------------
 
 def test_distress_and_relationship_messages_are_affective():

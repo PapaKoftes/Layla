@@ -55,7 +55,8 @@ def test_quiz_retake_does_not_ratchet_to_all_tens():
     run's deltas, so every retake ratcheted upward until all six dims clamped at 10 ('10 on all
     fields'). Scoring must be idempotent: the same answers, retaken with the prior result fed back
     as the seed (what the router does), must yield the SAME stats — and not saturate to all-10."""
-    from services.personality.operator_quiz import QUESTIONS, score_answers as _score
+    from services.personality.operator_quiz import QUESTIONS
+    from services.personality.operator_quiz import score_answers as _score
     answers = [{"question_id": q.id, "option_id": q.options[0].id} for q in QUESTIONS]
     p1, kv1 = _score(answers, seed_identity=None)
     p2, kv2 = _score(answers, seed_identity=kv1)   # retake #1 (seed = prior scored profile)
