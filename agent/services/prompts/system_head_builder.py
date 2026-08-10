@@ -678,37 +678,14 @@ def _strip_bare_reference_titles(blob: str) -> str:
     return "\n".join(res).strip()
 
 
-def build_system_head(
-    goal: str = "",
-    aspect: dict | None = None,
-    workspace_root: str = "",
-    sub_goals: list | None = None,
-    state: dict | None = None,
-    conversation_history: list | None = None,
-    reasoning_mode: str = "light",
-    _precomputed_recall: str | None = None,
-    persona_focus_id: str = "",
-    cognition_workspace_roots: list[str] | None = None,
-    packed_context: dict | None = None,
-) -> str:
-    """Build the full system prompt head from all context sources.
+def _resolve_knowledge_block(cfg: dict, goal: str, aspect: "dict | None", state: "dict | None",
+                            _skip_expensive: bool) -> str:
+    """Resolve the reference-docs ("knowledge") block for the system head.
 
-    This is the main entry point, extracted from agent_loop._build_system_head.
-    """
-    cfg = runtime_safety.load_config()
-    _skip_expensive = is_lightweight_chat_turn(goal, reasoning_mode)
-    identity = runtime_safety.load_identity().strip()
+    Extracted VERBATIM from build_system_head (behavior-preserving): goal-gated Chroma knowledge RAG
+    when enabled, else the static reference docs, then strip redundant leading '# Title' banners.
+    Mutates state["cited_knowledge_sources"] exactly as the inline block did."""
     knowledge = ""
-    # Emotional-support turn → warmth-first output-discipline (be heard first, no clinical advice-list).
-    # Trust the aspect flag select_aspect set, else detect from the goal directly.
-    _aff = bool(aspect and aspect.get("_affective_turn"))
-    if not _aff and goal:
-        try:
-            from services.personality.affect_detect import is_affective_turn
-            _aff = is_affective_turn(goal)
-        except Exception:
-            _aff = False
-
     # Lazy: full Chroma knowledge RAG only when research/search/explain keywords
     if not _skip_expensive and cfg.get("use_chroma") and goal and needs_knowledge_rag(goal):
         try:
@@ -762,16 +739,16 @@ def build_system_head(
     # paths above. See _strip_bare_reference_titles / test_no_dangling_headers.
     if knowledge:
         knowledge = _strip_bare_reference_titles(knowledge)
+    return knowledge
 
-    # Relevance-gate recent learnings against the goal, and skip them entirely on
-    # phatic/lightweight turns (a greeting must not pull in remembered topics).
-    if _skip_expensive:
-        learnings = ""
-    else:
-        learnings = load_learnings(
-            aspect_id=(aspect.get("id") or "") if aspect else "", goal=goal or "",
-        ).strip()
 
+def _build_personality(aspect: "dict | None", goal: str, cfg: dict, persona_focus_id: str,
+                       _skip_expensive: bool) -> str:
+    """Assemble the persona/voice block for the head (behavior-preserving extraction).
+
+    Aspect anchor + voice; capability/phatic turns trim to anchor+voice to protect the manifest
+    budget; then persona-focus, expertise-domain, learned voice-adjustment, and onboarding prefs.
+    Verbatim from build_system_head."""
     # Build aspect identity
     from services.prompts.prompt_builder import _is_capability_question, _is_identity_question
     if aspect:
@@ -852,6 +829,54 @@ def build_system_head(
             personality += "\n\n## User Preferences (from onboarding)\n" + "\n".join(_onboard_prefs[:6])
     except Exception as _op_exc:
         logger.debug("context[onboarding_prefs] failed: %s", _op_exc)
+    return personality, _domain_keywords
+
+
+def build_system_head(
+    goal: str = "",
+    aspect: dict | None = None,
+    workspace_root: str = "",
+    sub_goals: list | None = None,
+    state: dict | None = None,
+    conversation_history: list | None = None,
+    reasoning_mode: str = "light",
+    _precomputed_recall: str | None = None,
+    persona_focus_id: str = "",
+    cognition_workspace_roots: list[str] | None = None,
+    packed_context: dict | None = None,
+) -> str:
+    """Build the full system prompt head from all context sources.
+
+    This is the main entry point, extracted from agent_loop._build_system_head.
+    """
+    cfg = runtime_safety.load_config()
+    _skip_expensive = is_lightweight_chat_turn(goal, reasoning_mode)
+    identity = runtime_safety.load_identity().strip()
+    # Function-local (module-level would be a circular import with prompt_builder). Needed for the
+    # downstream capability-manifest gate; the extracted _build_personality helper imports its own copy.
+    from services.prompts.prompt_builder import _is_capability_question, _is_identity_question
+    # Emotional-support turn → warmth-first output-discipline (be heard first, no clinical advice-list).
+    # Trust the aspect flag select_aspect set, else detect from the goal directly.
+    _aff = bool(aspect and aspect.get("_affective_turn"))
+    if not _aff and goal:
+        try:
+            from services.personality.affect_detect import is_affective_turn
+            _aff = is_affective_turn(goal)
+        except Exception:
+            _aff = False
+
+    knowledge = _resolve_knowledge_block(cfg, goal, aspect, state, _skip_expensive)
+
+    # Relevance-gate recent learnings against the goal, and skip them entirely on
+    # phatic/lightweight turns (a greeting must not pull in remembered topics).
+    if _skip_expensive:
+        learnings = ""
+    else:
+        learnings = load_learnings(
+            aspect_id=(aspect.get("id") or "") if aspect else "", goal=goal or "",
+        ).strip()
+
+    personality, _domain_keywords = _build_personality(aspect, goal, cfg, persona_focus_id, _skip_expensive)
 
     # Phase 3B: Inject verification prompt if pending (conversational fact-checking)
     _st = state or {}
