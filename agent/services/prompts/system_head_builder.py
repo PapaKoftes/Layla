@@ -1042,76 +1042,12 @@ def _gather_workspace_context(goal: str, cfg: dict, workspace_root: str, packed_
     return workspace_context
 
 
-def build_system_head(
-    goal: str = "",
-    aspect: dict | None = None,
-    workspace_root: str = "",
-    sub_goals: list | None = None,
-    state: dict | None = None,
-    conversation_history: list | None = None,
-    reasoning_mode: str = "light",
-    _precomputed_recall: str | None = None,
-    persona_focus_id: str = "",
-    cognition_workspace_roots: list[str] | None = None,
-    packed_context: dict | None = None,
-) -> str:
-    """Build the full system prompt head from all context sources.
+def _gather_git_project_skills(workspace_root: str, cfg: dict, goal: str,
+                               _skip_expensive: bool) -> tuple:
+    """Git snapshot, project instructions (CLAUDE.md/AGENTS.md/.layla), and skills block for the head.
 
-    This is the main entry point, extracted from agent_loop._build_system_head.
-    """
-    cfg = runtime_safety.load_config()
-    _skip_expensive = is_lightweight_chat_turn(goal, reasoning_mode)
-    identity = runtime_safety.load_identity().strip()
-    # Function-local (module-level would be a circular import with prompt_builder). Needed for the
-    # downstream capability-manifest gate; the extracted _build_personality helper imports its own copy.
-    from services.prompts.prompt_builder import _is_capability_question, _is_identity_question
-    # Emotional-support turn → warmth-first output-discipline (be heard first, no clinical advice-list).
-    # Trust the aspect flag select_aspect set, else detect from the goal directly.
-    _aff = bool(aspect and aspect.get("_affective_turn"))
-    if not _aff and goal:
-        try:
-            from services.personality.affect_detect import is_affective_turn
-            _aff = is_affective_turn(goal)
-        except Exception:
-            _aff = False
-
-    knowledge = _resolve_knowledge_block(cfg, goal, aspect, state, _skip_expensive)
-
-    # Relevance-gate recent learnings against the goal, and skip them entirely on
-    # phatic/lightweight turns (a greeting must not pull in remembered topics).
-    if _skip_expensive:
-        learnings = ""
-    else:
-        learnings = load_learnings(
-            aspect_id=(aspect.get("id") or "") if aspect else "", goal=goal or "",
-        ).strip()
-
-    personality, _domain_keywords = _build_personality(aspect, goal, cfg, persona_focus_id, _skip_expensive)
-
-    # Phase 3B: Inject verification prompt if pending (conversational fact-checking)
-    _st = state or {}
-    if _st.get("verification_prompt"):
-        _vp = _st["verification_prompt"]
-        _vp_fact = (_vp.get("fact") or _vp.get("fact_content") or "") if isinstance(_vp, dict) else str(_vp)
-        if _vp_fact:
-            personality += (
-                "\n\n[VERIFICATION REQUEST] Before answering, naturally ask the user to confirm this fact you learned: \""
-                + _vp_fact[:300]
-                + "\". Frame it conversationally (e.g. 'By the way, I picked up that... is that right?')."
-            )
-
-    _sections = _gather_context_sections(
-        goal, cfg, aspect, state, _skip_expensive, _precomputed_recall, _domain_keywords, packed_context
-    )
-    _familiarity_directive = _sections["familiarity_directive"]
-    aspect_memories = _sections["aspect_memories"]
-    semantic = _sections["semantic"]
-    graph_associations = _sections["graph_associations"]
-    retrieved_context = _sections["retrieved_context"]
-
-    workspace_context = _gather_workspace_context(goal, cfg, workspace_root, packed_context, _skip_expensive, sub_goals)
-
-    # Git snapshot + project instructions + skills
+    All three are gated off on phatic/lightweight turns (no git subprocess spawns, no file reads).
+    Returns (git_preamble, project_instructions, skills_block). Verbatim from build_system_head."""
     git_preamble = ""
     project_instructions = ""
     skills_block = ""
@@ -1152,22 +1088,15 @@ def build_system_head(
                 skills_block = skills_mod.skills_prompt_block(goal, wr_root, max_tokens=800)
             except Exception as _exc:
                 logger.debug("system_head_builder[skills]: %s", _exc, exc_info=False)
+    return git_preamble, project_instructions, skills_block
 
-    # Core system instructions
-    from services.prompts.prompt_builder import _capability_manifest_core, build_core_sys_parts
-    sys_parts = build_core_sys_parts(
-        cfg=cfg, aspect=aspect, identity=identity, personality=personality,
-        goal=goal, reasoning_mode=reasoning_mode, repo_root=REPO_ROOT,
-    )
 
-    # Per-turn directives (aspect behaviour, rank unlocks, personality evolution, German mode, the BL-160
-    # response-language directive, mood, hardware). Every one of these used to be `system_instructions +=`
-    # AFTER the sys_parts join — i.e. concatenated onto the very TAIL of a ~3100-token string that is
-    # budget-truncated from the tail at 800 tokens (417 effective on a 2048-ctx box). They were built, paid
-    # for, and thrown away on every single turn. The most visible casualty was the language directive: the
-    # operator could set Spanish and still be answered in English, because the instruction never arrived.
-    # They are collected here and INSERTED near the front instead (see _directive_insert_at below), which is
-    # the same lesson already learned for the persona and now for the capability manifest.
+def _build_per_turn_directives(aspect: "dict | None", cfg: dict, goal: str,
+                               _familiarity_directive: str) -> list:
+    """Collect the per-turn directives that must ride the protected prefix (never tail-truncated):
+
+    aspect behaviour, familiarity, personality evolution, German mode, BL-160 response-language,
+    emotional-presence mood, and hardware capability summary. Verbatim from build_system_head."""
     _directives: list[str] = []
 
     # Aspect behavioral instructions
@@ -1252,6 +1181,96 @@ def build_system_head(
             _directives.append(_hw_summary)
     except Exception as _hw_e:
         logger.debug("hardware_probe capability_summary inject skipped: %s", _hw_e)
+    return _directives
+
+
+def build_system_head(
+    goal: str = "",
+    aspect: dict | None = None,
+    workspace_root: str = "",
+    sub_goals: list | None = None,
+    state: dict | None = None,
+    conversation_history: list | None = None,
+    reasoning_mode: str = "light",
+    _precomputed_recall: str | None = None,
+    persona_focus_id: str = "",
+    cognition_workspace_roots: list[str] | None = None,
+    packed_context: dict | None = None,
+) -> str:
+    """Build the full system prompt head from all context sources.
+
+    This is the main entry point, extracted from agent_loop._build_system_head.
+    """
+    cfg = runtime_safety.load_config()
+    _skip_expensive = is_lightweight_chat_turn(goal, reasoning_mode)
+    identity = runtime_safety.load_identity().strip()
+    # Function-local (module-level would be a circular import with prompt_builder). Needed for the
+    # downstream capability-manifest gate; the extracted _build_personality helper imports its own copy.
+    from services.prompts.prompt_builder import _is_capability_question, _is_identity_question
+    # Emotional-support turn → warmth-first output-discipline (be heard first, no clinical advice-list).
+    # Trust the aspect flag select_aspect set, else detect from the goal directly.
+    _aff = bool(aspect and aspect.get("_affective_turn"))
+    if not _aff and goal:
+        try:
+            from services.personality.affect_detect import is_affective_turn
+            _aff = is_affective_turn(goal)
+        except Exception:
+            _aff = False
+
+    knowledge = _resolve_knowledge_block(cfg, goal, aspect, state, _skip_expensive)
+
+    # Relevance-gate recent learnings against the goal, and skip them entirely on
+    # phatic/lightweight turns (a greeting must not pull in remembered topics).
+    if _skip_expensive:
+        learnings = ""
+    else:
+        learnings = load_learnings(
+            aspect_id=(aspect.get("id") or "") if aspect else "", goal=goal or "",
+        ).strip()
+
+    personality, _domain_keywords = _build_personality(aspect, goal, cfg, persona_focus_id, _skip_expensive)
+
+    # Phase 3B: Inject verification prompt if pending (conversational fact-checking)
+    _st = state or {}
+    if _st.get("verification_prompt"):
+        _vp = _st["verification_prompt"]
+        _vp_fact = (_vp.get("fact") or _vp.get("fact_content") or "") if isinstance(_vp, dict) else str(_vp)
+        if _vp_fact:
+            personality += (
+                "\n\n[VERIFICATION REQUEST] Before answering, naturally ask the user to confirm this fact you learned: \""
+                + _vp_fact[:300]
+                + "\". Frame it conversationally (e.g. 'By the way, I picked up that... is that right?')."
+            )
+
+    _sections = _gather_context_sections(
+        goal, cfg, aspect, state, _skip_expensive, _precomputed_recall, _domain_keywords, packed_context
+    )
+    _familiarity_directive = _sections["familiarity_directive"]
+    aspect_memories = _sections["aspect_memories"]
+    semantic = _sections["semantic"]
+    graph_associations = _sections["graph_associations"]
+    retrieved_context = _sections["retrieved_context"]
+
+    workspace_context = _gather_workspace_context(goal, cfg, workspace_root, packed_context, _skip_expensive, sub_goals)
+
+    git_preamble, project_instructions, skills_block = _gather_git_project_skills(workspace_root, cfg, goal, _skip_expensive)
+
+    # Core system instructions
+    from services.prompts.prompt_builder import _capability_manifest_core, build_core_sys_parts
+    sys_parts = build_core_sys_parts(
+        cfg=cfg, aspect=aspect, identity=identity, personality=personality,
+        goal=goal, reasoning_mode=reasoning_mode, repo_root=REPO_ROOT,
+    )
+
+    # Per-turn directives (aspect behaviour, rank unlocks, personality evolution, German mode, the BL-160
+    # response-language directive, mood, hardware). Every one of these used to be `system_instructions +=`
+    # AFTER the sys_parts join — i.e. concatenated onto the very TAIL of a ~3100-token string that is
+    # budget-truncated from the tail at 800 tokens (417 effective on a 2048-ctx box). They were built, paid
+    # for, and thrown away on every single turn. The most visible casualty was the language directive: the
+    # operator could set Spanish and still be answered in English, because the instruction never arrived.
+    # They are collected here and INSERTED near the front instead (see _directive_insert_at below), which is
+    # the same lesson already learned for the persona and now for the capability manifest.
+    _directives = _build_per_turn_directives(aspect, cfg, goal, _familiarity_directive)
 
     # Order the front of the prompt by what a truncation must never reach, NOT by what reads nicely.
     # `sys_parts` is joined and then TAIL-truncated, so a block's survival is decided entirely by how much
