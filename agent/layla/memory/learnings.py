@@ -239,10 +239,16 @@ def save_learning(
                         db.commit()
                 except Exception:
                     pass
-            if not _classified_sensitive:  # BL-020: keep classified-sensitive content out of Elasticsearch (even if unencrypted)
+            if not _classified_sensitive:  # BL-020: keep classified-sensitive content out of external indexes (even if unencrypted)
                 try:
                     import runtime_safety
-                    from services.retrieval.elasticsearch_bridge import index_learning
+
+                    # Route through the search_router fan-out, which indexes EVERY enabled external
+                    # backend (Meilisearch + Elasticsearch), each gated on its own *_enabled flag.
+                    # Previously this called elasticsearch_bridge.index_learning directly, so a user who
+                    # selected search_backend=meilisearch indexed nothing there and search silently fell
+                    # back to FTS — half of the "backend selection is a config lie" finding.
+                    from services.retrieval.search_router import index_learning
 
                     index_learning(
                         runtime_safety.load_config(),
