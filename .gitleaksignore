@@ -5,4 +5,9 @@
 # {"sub":"1"} (header {"alg":"HS256"}, signature literally "x") — a test fixture, never a credential.
 # gitleaks' generic-api-key rule matched the `token=` kwarg. The live line also carries an inline
 # `# gitleaks:allow`; this entry covers the historical commit that introduced it (history scan).
-497d0fb6fb6ca17fdc54ad961b991485b82e7063:agent/tests/test_registry_smoke.py:generic-api-key:400
+#
+# NOTE: the fingerprint's commit SHA must track history rewrites. The original 497d0fb6… entry went
+# stale after `git filter-repo` re-hashed every commit (the introducing commit is now 72d6cff2…),
+# which silently reopened this finding and turned the whole Secret-scan CI job red. Re-pin after any
+# future history rewrite by running gitleaks and copying the printed Fingerprint.
+72d6cff2b790f3803afedb19af7a019ce11214e0:agent/tests/test_registry_smoke.py:generic-api-key:400

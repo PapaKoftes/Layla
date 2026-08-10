@@ -492,7 +492,9 @@ def parse_gcode_semantics(gcode: str, rapid_rate: float = 3000.0) -> dict[str, A
             if spindle_on_before_cut is None:
                 spindle_on_before_cut = saw_spindle
 
-        xs += [pos[0], nx]; ys += [pos[1], ny]; zs += [pos[2], nz]
+        xs += [pos[0], nx]
+        ys += [pos[1], ny]
+        zs += [pos[2], nz]
         pos = [nx, ny, nz]
 
     ok = (cut_moves + rapid_moves) > 0

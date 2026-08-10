@@ -36,6 +36,7 @@ def test_agent_input_guard_fails_closed(monkeypatch):
     generation. Previously the exception was swallowed and the prompt passed through."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from routers import agent as ag
 
     def _boom(*a, **k):

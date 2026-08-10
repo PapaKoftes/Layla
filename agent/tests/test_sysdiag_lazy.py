@@ -2,6 +2,7 @@
 (/health full payload, /doctor/capabilities) on open, contending with inference on the single-process
 server. The heavy sections must be LAZY (loaded on demand), not fetched on open."""
 from pathlib import Path
+
 SD = Path(__file__).resolve().parent.parent / "ui" / "components" / "system-diagnostics.js"
 
 def test_heavy_sections_are_lazy():
