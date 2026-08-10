@@ -109,6 +109,7 @@ load (old driver), the installer automatically falls back to the CPU build so th
 
 - **Force it on/off at install:** `install\bootstrap.ps1 -Accel gpu` (or `-Accel cpu`); on Linux, `./install/bootstrap.sh --accel gpu`.
 - **Already installed on CPU and want GPU now?** Run once: `powershell -ExecutionPolicy Bypass -File install\enable_gpu.ps1` — it swaps only the llama.cpp build (your downloaded model is untouched) and verifies it. Revert anytime with `install\enable_gpu.ps1 -Off`.
+- **RTX 50-series (Blackwell / `sm_120`)?** *Not* fully plug-and-play yet. The prebuilt CUDA wheel has no Blackwell kernels and runs **slower than CPU**, so `enable_gpu.ps1` auto-detects the card and points you at a one-time native build: `install\enable_gpu.ps1 -Source` (needs the CUDA Toolkit + VS Build Tools — the script checks for both and tells you what's missing). See [`install/GPU_BLACKWELL.md`](install/GPU_BLACKWELL.md). After that it's ~5× CPU.
 
 **First-time guide:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
 
