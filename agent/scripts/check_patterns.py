@@ -136,7 +136,7 @@ def check_await_executor():
 # Why: FTS5 treats special chars (+, -, *, etc.) as operators â crashes.
 # ---------------------------------------------------------------------------
 _RE_FTS_MATCH = re.compile(r'MATCH\s+\?', re.IGNORECASE)
-_RE_FTS_ESCAPE = re.compile(r'_fts_q|\.replace\s*\(.*["\']["\']["\']|replace\(.*\+\s*["\']"')  # common escape patterns
+_RE_FTS_ESCAPE = re.compile(r'_fts_match_query|_fts_q|\.replace\s*\(.*["\']["\']["\']|replace\(.*\+\s*["\']"')  # helper builders + inline escapes
 # sqlite-vec vec0 KNN also uses `MATCH ?`, but the bound arg is a serialized float32
 # vector (a BLOB), not FTS5 text — quote-escaping it would corrupt the vector. These
 # are not FTS injection risks; recognise the sqlite-vec signature and skip them.
