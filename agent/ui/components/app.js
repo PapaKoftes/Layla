@@ -420,7 +420,14 @@ export async function send() {
 
   var fetchFn = (typeof window.fetchWithTimeout === 'function') ? window.fetchWithTimeout : fetch;
   var formatErr = (typeof window.formatAgentError === 'function') ? window.formatAgentError : function (r, b) { return 'Error: HTTP ' + (r && r.status); };
-  var sanitize = (typeof window.sanitizeHtml === 'function') ? window.sanitizeHtml : function (h) { return h; };
+  // Fail CLOSED: if the sanitizer global did not load (bad load order / vendor fetch failure),
+  // ESCAPE the string rather than passing raw model output to innerHTML. Returning `h` verbatim
+  // here was a latent XSS: untrusted model output could reach the DOM unsanitized.
+  var sanitize = (typeof window.sanitizeHtml === 'function') ? window.sanitizeHtml : function (h) {
+    return String(h == null ? '' : h)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
 
   try {
     if (streamMode) {
