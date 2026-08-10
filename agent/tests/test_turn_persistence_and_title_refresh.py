@@ -65,6 +65,24 @@ def _reset_fingerprints():
     ow._recent_learning_fingerprints = collections.OrderedDict()
 
 
+def _clear_learnings():
+    """Guarantee the empty-start precondition deterministically.
+
+    save_learning fans its work out to per-save daemon threads; a PRIOR test's thread can still be
+    running when its isolated_db patch context exits, and then write a learning row into THIS test's
+    freshly-patched tmp DB (the thread reads _DB_PATH at write time). Harmless in production (one DB),
+    but it makes `_learning_rows() == []` order-dependent under pytest-randomly — the observed CI flake.
+    Clearing the table right before the precondition removes the race without masking anything the test
+    actually verifies (the post-condition still measures only THIS turn's writes)."""
+    try:
+        from layla.memory.db_connection import _conn
+        with _conn() as db:
+            db.execute("DELETE FROM learnings")
+            db.commit()
+    except Exception:
+        pass
+
+
 @pytest.fixture
 def hermetic_cfg(monkeypatch):
     """Deterministic paths only — no model is loaded in a unit test."""
@@ -227,6 +245,7 @@ def test_timed_out_turn_still_learns_what_the_operator_said(isolated_db, hermeti
     from services.agent.turn_commit import commit_turn
 
     _reset_fingerprints()
+    _clear_learnings()
     assert _learning_rows() == []
 
     commit_turn(
@@ -251,6 +270,7 @@ def test_system_busy_turn_does_not_spawn_llm_learning(isolated_db, hermetic_cfg)
     from services.agent.turn_commit import commit_turn
 
     _reset_fingerprints()
+    _clear_learnings()
     assert _learning_rows() == []
 
     commit_turn(
