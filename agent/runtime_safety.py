@@ -485,9 +485,9 @@ def validate_backend_selection(cfg: dict) -> list[str]:
     sb = str((cfg or {}).get("search_backend", "auto")).strip().lower()
     if sb in ("meilisearch", "elasticsearch"):
         out.append(
-            f"search_backend='{sb}' is selected, but learnings search calls sqlite FTS directly and "
-            f"does not route through services/retrieval/search_router — the external backend is unused. "
-            f"Using sqlite FTS."
+            f"search_backend='{sb}': saves now fan out to it and GET /memories routes through "
+            f"services/retrieval/search_router (with automatic SQLite-FTS failover), but the per-turn "
+            f"recall path (retrieve_relevant_memory) still uses local vector/FTS — partial dispatch."
         )
     for _w in out:
         logger.warning("backend selection not honored: %s", _w)

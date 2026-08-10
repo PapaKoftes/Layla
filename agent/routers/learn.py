@@ -39,12 +39,27 @@ def search_memories(q: str = "", n: int = 8, aspect_id: str = ""):
     except Exception as e:
         logger.warning("search_memories failed: %s", e)
         try:
-            from layla.memory.db import search_learnings_fts
-            rows = search_learnings_fts(q.strip(), n=min(n, 20), aspect_id=aspect_id or None)
-            items = [r.get("content", "") for r in rows if r.get("content")]
-            return JSONResponse({"ok": True, "memories": items, "count": len(items)})
+            asp = (aspect_id or "").strip()
+            if asp:
+                # Aspect-scoped search: keep the direct FTS path (search_router does not thread
+                # aspect_id) so per-aspect filtering is preserved.
+                from layla.memory.db import search_learnings_fts
+                rows = search_learnings_fts(q.strip(), n=min(n, 20), aspect_id=asp)
+                items = [r.get("content", "") for r in rows if r.get("content")]
+                return JSONResponse({"ok": True, "memories": items, "count": len(items)})
+            # Unscoped: route through search_router so a selected external backend (Meilisearch /
+            # Elasticsearch) is actually consulted — it auto-fails-over to SQLite FTS when the backend
+            # is unset or unreachable, so local-only installs behave exactly as before.
+            from services.retrieval import search_router
+            res = search_router.search(q.strip(), limit=min(n, 20))
+            items = [
+                (h.get("content") or h.get("text") or "")
+                for h in (res.get("hits") or [])
+                if (h.get("content") or h.get("text"))
+            ]
+            return JSONResponse({"ok": True, "memories": items, "count": len(items), "backend": res.get("backend")})
         except Exception as e2:
-            logger.warning("search_learnings_fts fallback failed: %s", e2)
+            logger.warning("search_memories keyword fallback failed: %s", e2)
             return JSONResponse({"ok": False, "error": str(e2), "memories": [], "count": 0})
 
 
