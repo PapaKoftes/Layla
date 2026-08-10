@@ -180,7 +180,10 @@ for py_file in _iter_src():
             nm = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
             if nm == "commit_turn":
                 commit_turn_calls += 1
-ratchet("commit_turn call sites", commit_turn_calls, 19, "one turn seam — CP-7")
+# 19 -> 20: agen_ma (multi-agent stream) gained the BL-245 client-abort persist that agen_fast and the
+# main agen path already had — a Stop mid-run was silently dropping the operator's message. This is
+# turn-loss-prevention parity, not a new turn seam.
+ratchet("commit_turn call sites", commit_turn_calls, 20, "one turn seam — CP-7")
 
 
 # ── Check 4b: Required sub-packages exist ─────────────────────────────
