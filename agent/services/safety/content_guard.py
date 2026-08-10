@@ -177,12 +177,32 @@ def _match_variants(text: str) -> list[str]:
     low = text.lower()
     deleet = low.translate(_LEET)
     # collapse runs of single chars separated by whitespace/punctuation into one token
-    despaced = re.sub(r"\b(\w)(?:[\s.\-_*]+(\w)\b)+",
-                      lambda m: "".join(re.findall(r"\w", m.group(0))), low)
+    _despace_re = re.compile(r"\b(\w)(?:[\s.\-_*]+(\w)\b)+")
+
+    def _collapse(m):
+        return "".join(re.findall(r"\w", m.group(0)))
+
+    # A single-char run is AMBIGUOUS: "a n t h r a x" is the one word "anthrax", but "a k e y l o g g e r"
+    # is a lone word "a" shielding "keylogger" — collapsing the whole run to "akeylogger" destroys the
+    # \bkeylogger\b boundary the Tier-1 pattern needs, so a single leading letter defeated the check.
+    # Both readings are indistinguishable without a dictionary, so emit BOTH: full collapse (still catches
+    # "anthrax") and a first-letter-split (catches the "a"+payload prefix). Purely additive.
+    def _split_lead(m):
+        chars = re.findall(r"\w", m.group(0))
+        return (chars[0] + " " + "".join(chars[1:])) if len(chars) > 1 else "".join(chars)
+
+    # Treat a run of 2+ whitespace as a WORD boundary: spacing a phrase out letter-by-letter leaves a
+    # WIDER gap between words ("w r i t e   r a n s o m w a r e") than between letters, so splitting on
+    # \s{2,} first stops the verb and the payload from gluing into one unmatchable token
+    # ("writeransomware") — the second de-space evasion. Bounded work (input already capped at 20KB).
+    _segs = re.split(r"\s{2,}", low)
+    despaced = " ".join(_despace_re.sub(_collapse, s) for s in _segs)
+    despaced_split = " ".join(_despace_re.sub(_split_lead, s) for s in _segs)
     despaced_deleet = despaced.translate(_LEET)
+    despaced_split_deleet = despaced_split.translate(_LEET)
     # de-dup while preserving order
     seen, out = set(), []
-    for v in (text, deleet, despaced, despaced_deleet):
+    for v in (text, deleet, despaced, despaced_split, despaced_deleet, despaced_split_deleet):
         if v not in seen:
             seen.add(v)
             out.append(v)

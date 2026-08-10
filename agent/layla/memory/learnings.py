@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 from layla.memory.db_connection import _conn
 from layla.memory.migrations import migrate
@@ -15,6 +16,21 @@ logger = logging.getLogger("layla")
 
 _rate_lock = threading.Lock()
 _recent_learning_ts: deque[float] = deque()
+
+# Bounded background worker for per-save side tasks (graph expansion + consistency flagging). Each save
+# used to spawn TWO fresh UNBOUNDED daemon threads; a burst of explicit "remember this" saves
+# (bypass_rate_limit skips the anti-spam window) could spawn hundreds and exhaust the thread table. A
+# small shared pool caps live workers to _BG_WORKERS; excess tasks queue and run as slots free.
+_BG_WORKERS = 2
+_bg_pool = ThreadPoolExecutor(max_workers=_BG_WORKERS, thread_name_prefix="learning-bg")
+
+
+def _submit_bg(fn) -> None:
+    """Best-effort background submit; never let scheduling failure break a save."""
+    try:
+        _bg_pool.submit(fn)
+    except Exception:
+        pass
 
 
 # ── encryption-at-rest for `sensitive` learnings (BL-020) ────────────────────
@@ -272,34 +288,25 @@ def save_learning(
                 award_xp(10, reason=f"learning_saved:{learning_type}")
             except Exception:
                 pass
-        # Section 5: graph expansion in background (daemon thread, non-blocking)
+        # Section 5: graph expansion in background (bounded pool, non-blocking)
         if rid and content:
-            try:
-                import threading
-                def _expand():
-                    try:
-                        from services.memory.graph_learning import expand_graph_from_learning
-                        expand_graph_from_learning(content)
-                    except Exception:
-                        pass
-                t = threading.Thread(target=_expand, daemon=True, name="graph-expand")
-                t.start()
-            except Exception:
-                pass
+            def _expand(_c=content):
+                try:
+                    from services.memory.graph_learning import expand_graph_from_learning
+                    expand_graph_from_learning(_c)
+                except Exception:
+                    pass
+            _submit_bg(_expand)
         # Memory self-consistency guard: flag (don't block) if this new learning likely
         # contradicts a stored one, for later reconcile. Non-blocking; skip classified-sensitive.
         if rid and content and not _classified_sensitive:
-            try:
-                import threading
-                def _consistency():
-                    try:
-                        from services.memory.consistency_guard import check_and_flag
-                        check_and_flag(content, new_id=int(rid))
-                    except Exception:
-                        pass
-                threading.Thread(target=_consistency, daemon=True, name="memory-consistency").start()
-            except Exception:
-                pass
+            def _consistency(_c=content, _rid=int(rid)):
+                try:
+                    from services.memory.consistency_guard import check_and_flag
+                    check_and_flag(_c, new_id=_rid)
+                except Exception:
+                    pass
+            _submit_bg(_consistency)
         try:
             from services.memory.personal_knowledge_graph import invalidate_personal_graph
             invalidate_personal_graph()

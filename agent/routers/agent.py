@@ -266,7 +266,11 @@ def _apply_output_floor(text: str, cfg: dict | None = None) -> tuple[str, bool]:
             logger.warning("content_guard: /agent stream output blocked tier=%s cat=%s", _out.tier, _out.category)
             return _blk_out(_out), True
     except Exception:
-        pass
+        # FAIL CLOSED — match the input guard, the JSON output guard, and this module's stated invariant
+        # ("the input and output checks now FAIL CLOSED"). If the streaming floor cannot verify the output
+        # is safe, withhold it rather than shipping unverified content on the default SSE UI path.
+        logger.warning("content_guard: /agent stream output floor errored — withholding (fail closed)")
+        return "I can't share that response — a safety check could not complete. Please try again.", True
     return text, False
 
 
@@ -985,6 +989,7 @@ async def agent(req: AgentRequest, request: Request):
 
             async def agen_ma():
                 watch_task = asyncio.create_task(_watch_client_disconnect(request, _ma_abort))
+                _ma_committed = False
                 try:
                     yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
                     # Surface a cold model load so the UI shows "Loading model…" rather than a
@@ -1009,6 +1014,7 @@ async def agent(req: AgentRequest, request: Request):
                         aspect_id=aspect_id or "",
                         status="blocked" if _ma_blocked else "finished",
                     )
+                    _ma_committed = True
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
@@ -1028,6 +1034,17 @@ async def agent(req: AgentRequest, request: Request):
                         await watch_task
                     except Exception:
                         pass
+                    # BL-245 parity: agen_fast and the main agen path both persist the operator's turn on
+                    # a client-abort so it never vanishes from the transcript. agen_ma had neither the
+                    # dedup flag nor this net — a Stop during the long run_multi_agent() call (reachable on
+                    # a GPU tier where should_use_multi_agent fires) silently dropped the user's message.
+                    if not _ma_committed:
+                        try:
+                            commit_turn(conversation_id, goal, "", aspect_id=aspect_id or "", status="client_abort")
+                            append_conv_history(conversation_id, "user", goal)
+                            _append_history("user", goal)
+                        except Exception:
+                            logger.debug("agen_ma abort-persist failed", exc_info=True)
 
             return StreamingResponse(
                 agen_ma(),

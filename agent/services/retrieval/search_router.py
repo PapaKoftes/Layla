@@ -51,7 +51,10 @@ def _search_sqlite_fts(cfg: dict, query: str, limit: int) -> dict[str, Any]:
     """Search via SQLite FTS5 (always available, no external deps)."""
     try:
         from layla.memory.db import search_learnings_fts
-        results = search_learnings_fts(query, limit=limit)
+        # BUG FIX: the signature is search_learnings_fts(query, n=..., aspect_id=...); passing limit=
+        # raised TypeError on EVERY call, so the always-available keyword tier was silently dead — a
+        # no-vector-store install got zero keyword hits even for facts sitting in sqlite.
+        results = search_learnings_fts(query, n=int(limit))
         return {"ok": True, "hits": results, "backend": "sqlite_fts"}
     except ImportError:
         # FTS function not available — fallback to LIKE search
@@ -64,26 +67,25 @@ def _search_sqlite_fts(cfg: dict, query: str, limit: int) -> dict[str, Any]:
 def _search_sqlite_like(cfg: dict, query: str, limit: int) -> dict[str, Any]:
     """Fallback: simple LIKE search on SQLite learnings table."""
     try:
-        from layla.memory.db import get_db
-        db = get_db()
-        if db is None:
-            return {"ok": False, "error": "no database", "hits": []}
+        # BUG FIX: layla.memory.db exposes no `get_db`; the import raised ImportError so this LIKE
+        # fallback was dead too. Use the real connection context manager instead.
+        from layla.memory.db_connection import _conn
+
         # Sanitize query for LIKE
         safe_q = query.replace("%", "").replace("_", "").strip()
         if not safe_q:
-            return {"ok": True, "hits": []}
-        cursor = db.execute(
-            "SELECT rowid, content, tags FROM learnings WHERE content LIKE ? LIMIT ?",
-            (f"%{safe_q}%", limit),
-        )
-        hits = []
-        for row in cursor:
-            hits.append({
-                "id": row[0],
-                "text": (row[1] or "")[:2000],
-                "tags": row[2] or "",
-                "score": None,
-            })
+            return {"ok": True, "hits": [], "backend": "sqlite_like"}
+        with _conn() as db:
+            cursor = db.execute(
+                "SELECT id, content FROM learnings WHERE content LIKE ? LIMIT ?",
+                (f"%{safe_q}%", int(limit)),
+            )
+            rows = cursor.fetchall()
+        # Both keys: `content` matches the FTS hit shape (callers read content-or-text).
+        hits = [
+            {"id": r[0], "content": (r[1] or "")[:2000], "text": (r[1] or "")[:2000], "score": None}
+            for r in rows
+        ]
         return {"ok": True, "hits": hits, "backend": "sqlite_like"}
     except Exception as e:
         return {"ok": False, "error": str(e), "hits": []}
