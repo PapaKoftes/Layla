@@ -124,9 +124,34 @@ def retrieve_relevant_memory(
             from layla.memory.vector_store import embedder_status
 
             if embedder_status().get("status") == "unavailable":
+                # The embedder is DOWN, but retrieval must still ANSWER: the capability manifest and the
+                # vector_store error both promise a keyword (BM25/FTS) fallback, and for a long time this
+                # branch broke that promise — it returned [] so a cold-cache box silently recalled NOTHING
+                # (semantic AND keyword), instead of the advertised "degraded, not off". SQLite FTS needs no
+                # embedder and is always available, so fall back to it here before giving up.
+                try:
+                    from layla.memory.db import search_learnings_fts
+
+                    fts = _normalize_confidence(search_learnings_fts(task, n=k))
+                    _min = max(0.0, float(min_confidence or 0.0))
+                    if _min > 0.0:
+                        fts = [r for r in fts if r.get("confidence", 0.0) >= _min]
+                except Exception:  # noqa: BLE001 — FTS is best-effort; never let it mask the embedder message
+                    fts = []
+                if fts:
+                    logger.warning(
+                        "retrieve_relevant_memory: embedder unavailable — answered from keyword search "
+                        "(BM25/FTS), degraded not off (see EMBEDDER UNAVAILABLE above, GET /health/deps): %s", e,
+                    )
+                    try:
+                        from services.observability import liveness
+                        liveness.fire("grounding_recall_fired")
+                    except Exception:  # noqa: BLE001 — liveness must never break retrieval
+                        pass
+                    return fts
                 logger.warning(
-                    "retrieve_relevant_memory: returning NO memories — the embedder is unavailable (see the "
-                    "EMBEDDER UNAVAILABLE error above and GET /health/deps): %s", e,
+                    "retrieve_relevant_memory: returning NO memories — the embedder is unavailable and the "
+                    "keyword fallback found nothing (see EMBEDDER UNAVAILABLE above, GET /health/deps): %s", e,
                 )
                 return []
         except Exception:

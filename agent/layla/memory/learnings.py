@@ -389,6 +389,28 @@ def _apply_confidence_decay(confidence: float, created_at: str) -> float:
     return conf * math.exp(-age_days / 180.0)
 
 
+def _fts_match_query(query: str) -> str:
+    """Build an FTS5 MATCH expression from a natural-language query.
+
+    The whole string used to be wrapped in double quotes, which is an FTS5 *phrase* query — it
+    matches only when the exact contiguous phrase appears in the document. So a real question like
+    "where is the zephyr deploy runbook" matched NOTHING against the fact "The zephyr deploy runbook
+    lives at …", because the interrogative prefix is not in the stored text. Keyword recall was
+    therefore useless for questions, and the only path that ever worked was semantic (embedder) —
+    which is exactly the recall that silently vanishes on a cold-cache / offline box.
+
+    Instead OR the significant terms, each quoted so FTS operators inside a token are neutralised.
+    Overlap on any distinctive term (e.g. "zephyr") now matches, and BM25 `rank` still orders by
+    relevance and down-weights common words. Falls back to the quoted phrase if no usable token
+    survives (e.g. a query of only punctuation)."""
+    import re as _re
+
+    toks = [t for t in _re.findall(r"[^\W_]+", query or "", flags=_re.UNICODE) if len(t) >= 2]
+    if not toks:
+        return '"' + (query or "").replace('"', '""') + '"'
+    return " OR ".join('"' + t.replace('"', '""') + '"' for t in toks)
+
+
 def search_learnings_fts(query: str, n: int = 20, aspect_id: str | None = None) -> list[dict]:
     """
     FTS5 full-text search over learnings using Porter stemmer + unicode tokenization.
@@ -417,7 +439,7 @@ def search_learnings_fts(query: str, n: int = 20, aspect_id: str | None = None) 
                    WHERE learnings_fts MATCH ?{asp_sql}
                    ORDER BY rank
                    LIMIT ?""",
-                ('"' + query.replace('"', '""') + '"', *asp_args, n),
+                (_fts_match_query(query), *asp_args, n),
             ).fetchall()
             result = [dict(r) for r in rows]
             for r in result:
