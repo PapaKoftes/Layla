@@ -24,6 +24,15 @@ def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     mapped = getattr(ip, "ipv4_mapped", None)
     if mapped is not None:
         ip = mapped
+    # `not ip.is_global` is the load-bearing catch-all: it blocks anything not globally routable,
+    # including RFC 6598 CGNAT shared space (100.64.0.0/10) that some cloud/k8s fabrics route internal
+    # services on and that NONE of the six explicit predicates below catch (is_private/is_reserved are
+    # both False for it in CPython). The explicit predicates are kept for clarity and older behaviour.
+    try:
+        if not ip.is_global:
+            return True
+    except Exception:
+        pass
     return (
         ip.is_private
         or ip.is_loopback

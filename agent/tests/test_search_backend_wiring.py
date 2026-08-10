@@ -60,6 +60,32 @@ def test_memories_search_routes_through_search_router(monkeypatch):
     assert body.get("backend") == "meilisearch", "the endpoint must report which backend answered"
 
 
+def test_search_router_sqlite_path_returns_real_hits(isolated_db):
+    """The ALWAYS-available sqlite tier of search_router must actually work — NOT mocked.
+
+    Regression guard: search_router called search_learnings_fts(query, limit=...) (wrong kwarg → the
+    signature is n=) and imported a non-existent get_db, so BOTH sqlite tiers raised and search_router
+    returned {"backend":"none"} for every no-external-backend install. The other wiring tests mock
+    search_router.search wholesale and could not catch it. This one drives the real sqlite path."""
+    from layla.memory.learnings import save_learning
+    from services.retrieval import search_router
+
+    save_learning("The zephyr deploy runbook lives at ops/deploy/RUNBOOK-zephyr.md",
+                  kind="fact", source="t", bypass_rate_limit=True)
+
+    res = search_router.search("zephyr deploy runbook", limit=5, cfg={"search_backend": "sqlite_fts"})
+    assert res.get("ok"), f"sqlite_fts tier must succeed, got {res}"
+    assert res.get("backend") in ("sqlite_fts", "sqlite_like"), res
+    hits = res.get("hits") or []
+    assert any("zephyr" in (h.get("content") or h.get("text") or "").lower() for h in hits), (
+        f"the seeded fact must be recalled via the sqlite keyword tier, got {res}"
+    )
+
+    # The LIKE fallback (used when FTS5 is unavailable) must also be alive, not raise on a bad import.
+    like = search_router._search_sqlite_like({}, "zephyr", 5)
+    assert like.get("ok") and (like.get("hits")), f"LIKE fallback must return hits, got {like}"
+
+
 def test_aspect_scoped_memories_search_keeps_direct_fts(monkeypatch):
     """Aspect-scoped search keeps the direct FTS path (search_router does not thread aspect_id)."""
     import routers.learn as learn

@@ -293,13 +293,35 @@ def _retrieve_and_build(query: str, k: int, coding_boost: bool = False, track_id
     """
     k = max(1, min(int(k), MAX_K))
     learnings, docs, graph = [], [], []
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    # Bounded wait: an unbounded f.result() froze the WHOLE turn forever if a leg hung (an embedder that
+    # stalls instead of erroring — reproduced). Each leg gets a timeout and degrades to empty on hang;
+    # shutdown(wait=False) means a hung leg cannot block the turn on context exit either.
+    try:
+        _ret_timeout = float(__import__("runtime_safety", fromlist=[None]).load_config().get("retrieval_timeout_seconds", 20) or 20)
+    except Exception:
+        _ret_timeout = 20.0
+    import concurrent.futures as _cf
+    ex = ThreadPoolExecutor(max_workers=3)
+    try:
         f_learn = ex.submit(retrieve_learnings, query, k, coding_boost=coding_boost)
         f_docs = ex.submit(retrieve_documents, query, k)
         f_graph = ex.submit(retrieve_graph_context, query, k)
-        learnings = f_learn.result()
-        docs = f_docs.result()
-        graph = f_graph.result()
+
+        def _leg(fut, label):
+            try:
+                return fut.result(timeout=_ret_timeout)
+            except _cf.TimeoutError:
+                logger.warning("retrieval leg '%s' exceeded %.0fs — degrading to empty (turn not blocked)", label, _ret_timeout)
+                return []
+            except Exception as _le:
+                logger.debug("retrieval leg '%s' failed: %s", label, _le)
+                return []
+
+        learnings = _leg(f_learn, "learnings")
+        docs = _leg(f_docs, "docs")
+        graph = _leg(f_graph, "graph")
+    finally:
+        ex.shutdown(wait=False)
     lines: list[str] = []
     line_word_sets: list[set[str]] = []
     learning_ids: list[str] = []
