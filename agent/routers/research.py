@@ -61,8 +61,31 @@ _RESEARCH_PREFIX = (
 )
 
 
+def _require_model() -> JSONResponse | None:
+    """Clean 503 when no usable model is ready — so /research and /research_mission degrade legibly
+    (parity with /agent) instead of bubbling a raw 'Model path does not exist' ValueError from the
+    loader. Reuses the exact model_loaded_status() check /agent uses, so remote backends (which report
+    ready) are not falsely blocked."""
+    try:
+        from services.llm.llm_gateway import model_loaded_status
+        err = (model_loaded_status() or {}).get("error")
+        if err:
+            return JSONResponse(
+                {"error": "no_model", "action": "open_setup",
+                 "response": f"No model is ready: {err}. Run `python agent/first_run.py` "
+                             f"(or configure runtime_config.json). See MODELS.md."},
+                status_code=503,
+            )
+    except Exception:
+        pass
+    return None
+
+
 @router.post("/research_mission")
 async def research_mission(request: Request):
+    _ng = _require_model()
+    if _ng is not None:
+        return _ng
     try:
         req = await request.json()
     except Exception:
@@ -403,6 +426,9 @@ def research_mission_verify():
 
 @router.post("/research")
 async def research(req: dict):
+    _ng = _require_model()
+    if _ng is not None:
+        return _ng
     get_touch_activity()()
     _history = get_history()
     _append_history = get_append_history()
