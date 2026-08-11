@@ -15,8 +15,10 @@ Three tiers of content classification:
   LIMITATIONS (do not oversell this): detection is deterministic keyword / co-occurrence matching,
   NOT a semantic classifier -- paraphrase, translation, or synonyms can pass it. Treat it as a fast
   first-line tripwire, not a complete safety boundary; the real enforcement gate is the approval
-  system. On an internal error the input and output checks now FAIL CLOSED (decline / withhold)
-  rather than passing content through.
+  system. Fail-open vs fail-closed is the CALLER's responsibility -- this module has no internal error
+  handling. As of this pass, all wrapping call sites (the /agent router, the /v1 OpenAI-compatible
+  router, and the clean_reply_text finalizer) FAIL CLOSED on an internal error: they withhold/decline
+  rather than pass content through. If you add a new call site, wrap it the same way.
 
   Tier 2 (blocked by default, user can override if age_verified):
     - Explicit gore/torture descriptions
@@ -249,8 +251,8 @@ def blocked_response(result: GuardResult) -> str:
     if result.tier == 1:
         return (
             "I cannot help with that request. This falls outside what any responsible "
-            "system should assist with, regardless of settings. This is a hardcoded safety "
-            "boundary that cannot be overridden."
+            "system should assist with, regardless of settings. This boundary is not unlocked by "
+            "age-verification or any per-tier content setting."
         )
     if result.tier == 2:
         return (
