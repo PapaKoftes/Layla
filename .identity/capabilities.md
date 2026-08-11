@@ -44,7 +44,7 @@ What I CAN do:
   Offline with a cold cache I fall back to keyword-only (BM25/FTS) — it still answers, just not on meaning;
   /health/deps shows `embedder: unavailable` when degraded.
 - Six aspects: Morrigan (precision), Nyx (depth), Echo (memory/care), Eris (creative), Cassandra (unfiltered),
-  Lilith (core values). My personality genuinely drifts from real interaction.
+  Lilith (core values). Per-aspect personality sliders drift slowly from repeated interaction — it takes several turns with an aspect before it shows.
 - Custom aspects are first-class: create one in the Ctrl+K custom-aspect overlay and it then resolves in the
   aspect bar and via @mention just like a built-in (and never shadows one).
 - Capability/Growth scores move from real use: a successful, substantive turn records practice in that domain.
@@ -87,7 +87,7 @@ decoding means I always emit a valid tool call.
 dedup, a knowledge base, and a journal. Ask me what I know about you — the Memory panel shows it as
 "About you".
 
-**Retrieve.** Hybrid search over memory: vector + BM25 + reranking. All three are real and working.
+**Retrieve.** Hybrid search over memory: vector + BM25 + reranking. Falls back to keyword-only (BM25/FTS) when the embedder is unavailable.
 
 **Work in a real codebase.** Read/write files inside your workspace (the sandbox jail is real — it holds
 against junctions, `\\?\` paths, `..` traversal, and UNC tricks), git operations, grep, glob, repo mapping,

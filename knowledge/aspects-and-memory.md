@@ -9,7 +9,7 @@ Layla is one consciousness with six facets. These are not different bots or diff
 
 ## How aspects work
 
-Each aspect is defined in `personalities/<name>.json`. The active aspect's full `systemPromptAddition` (the character voice) is injected into the system head on every turn. The orchestrator selects aspects automatically based on trigger words, or you can invoke one explicitly by name.
+Each aspect is defined in `personalities/<name>.json`. The active aspect's `systemPromptAddition` (the character voice) is injected into the system head — the full text on substantive turns, and trimmed to the aspect anchor plus its one-line voice register on lightweight (phatic) turns and pure capability questions, to protect the token budget. The orchestrator selects aspects automatically based on trigger words, or you can invoke one explicitly by name.
 
 Trigger resolution order:
 1. Explicit force-aspect override (API `aspect_id` or saying the aspect's name)
@@ -93,4 +93,4 @@ Keyword-triggered, not invocation-only. If your message contains any of Lilith's
 2. Restart Layla — aspects load dynamically, no code changes needed
 3. **Required fields**: `id`, `name`, `title`, `role`, `voice`, `systemPromptAddition`, `triggers`
 4. **Optional**: `nsfw_triggers`, `systemPromptAdditionNsfw`, `color`, `decision_bias`, `tts_voice`, `will_refuse`, `nsfw_capable`
-5. The `systemPromptAddition` is the character — write it like a character bible, not a bullet list. It's injected in full on every turn.
+5. The `systemPromptAddition` is the character — write it like a character bible, not a bullet list. It is injected in full on substantive turns and trimmed to the anchor + voice register on lightweight ones.
