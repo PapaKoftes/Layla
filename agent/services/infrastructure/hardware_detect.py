@@ -390,12 +390,14 @@ def get_capability_summary(hw: dict | None = None) -> str:
     try:
         import runtime_safety
         cfg = runtime_safety.load_config() or {}
-        mp = (cfg.get("model_path") or cfg.get("model_filename") or "").strip()
-        if mp:
-            from pathlib import Path as _Path
-            p = _Path(mp)
-            if p.exists():
-                model_params = round(p.stat().st_size / (1024 * 1024 * 550), 1)
+        # resolve_model_path handles the installer's {model_filename basename + models_dir} shape.
+        # The old code did Path(cfg["model_filename"]).exists(), but a bare basename never exists
+        # relative to cwd, so EVERY real install was mislabelled "sub-1B (very small) model" — a false
+        # self-description injected into the system prompt every turn that biases her toward refusing
+        # complex work. Resolve the real path instead.
+        p = runtime_safety.resolve_model_path(cfg)
+        if p and p.exists():
+            model_params = round(p.stat().st_size / (1024 * 1024 * 550), 1)
     except Exception:
         pass
     model_str = (

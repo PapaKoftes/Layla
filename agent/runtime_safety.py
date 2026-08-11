@@ -1102,6 +1102,16 @@ def load_config() -> dict:
                             defaults[_k] = coerce_and_clamp(_k, defaults[_k])
                 except Exception as _ce:
                     logger.debug("config clamp skipped: %s", _ce)
+        except json.JSONDecodeError as e:
+            # A JSON typo (trailing comma, truncation) must NOT silently erase the user's WHOLE config,
+            # incl. model_filename — which then falls back to the your-model.gguf placeholder and the app
+            # reports "no model" with nothing at default log level explaining why. Log LOUD and record it
+            # so /health can surface "your config did not parse" instead of a misleading "no model".
+            logger.warning(
+                "runtime_config.json failed to PARSE (%s) — using DEFAULTS this load; your saved settings "
+                "(including your model) are ignored until the JSON is fixed", e,
+            )
+            defaults["_config_parse_error"] = str(e)
         except Exception as e:
             logger.debug("runtime_safety config load failed: %s", e)
         # Startup gate (main.py): Chroma wheels unusable on this interpreter — disable semantic layer only.

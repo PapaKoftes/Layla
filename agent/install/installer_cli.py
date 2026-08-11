@@ -160,7 +160,7 @@ def run() -> int:
     """Interactive installer. Returns 0 on success."""
     try:
         from install.model_downloader import download_model, get_canonical_models_dir
-        from install.model_selector import recommend_model
+        from install.model_selector import recommend_kit, recommend_model
         from services.infrastructure.hardware_detect import classify_hardware, detect_hardware
     except ImportError as e:
         raise ImportError(f"Installer dependencies missing: {e}. Run from repo root with venv activated.") from e
@@ -191,7 +191,11 @@ def run() -> int:
 
     # 2. Recommend model from catalog (hardware-aware)
     print("  [2/6]  Recommending model for your hardware...")
-    recommended = recommend_model(hardware)
+    # Use recommend_kit's hardware-aware PRIMARY (what bootstrap.ps1 -> provision_model and the web
+    # setup both use) rather than recommend_model, which is deliberately smallest-fits/safety-biased and
+    # was handing a 0.5B model to a 16GB-VRAM workstation. Fall back to recommend_model if no kit fits.
+    _kit = recommend_kit(hardware, domain="coding", prefer="balanced")
+    recommended = (_kit or {}).get("primary") or recommend_model(hardware)
     if not recommended:
         print("      [!] No compatible model in catalog. See MODELS.md for manual download.")
         model_filename = ""
