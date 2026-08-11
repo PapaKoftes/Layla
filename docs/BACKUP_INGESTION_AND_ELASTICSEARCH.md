@@ -6,7 +6,7 @@ How to feed Layla **historical data** (chat exports, backups, audio) and optiona
 
 1. **Approvals** — Destructive restores use the normal approval path when `safe_mode` applies.
 2. **Knowledge path** — Bulk chat text lands under `knowledge/_ingested/chats/` as Markdown so the **existing Chroma/BM25 indexer** can pick it up on refresh (same pattern as [doc_ingestion](../agent/services/doc_ingestion.py)).
-3. **Audio** — Use the **`stt_file`** tool (faster-whisper) on files under the sandbox; then index transcripts via the chat export tool or `POST /learn/`.
+3. **Audio** — *Requires the optional Voice feature (Settings → Setup, ~500 MB): STT (faster-whisper) is **not installed by default**, so `stt_file` is unavailable until you add it.* Once installed, use the **`stt_file`** tool on files under the sandbox, then index transcripts via the chat export tool or `POST /learn/`.
 4. **Elasticsearch** — **Optional**. When `elasticsearch_enabled` is true and `elasticsearch` Python client + server are available, learnings are mirrored to an index for keyword/BM25-style search alongside Chroma.
 
 ## Chat exports & external logs

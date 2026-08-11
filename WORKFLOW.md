@@ -176,7 +176,7 @@ The decision loop exits when any of the following is true:
 2. **Tool execution always has a timeout** — no unbounded blocking
 3. **History appended exactly once per turn** — no duplicates across paths
 4. **Approval records have expiry** — no permanent orphans
-5. **Sandbox check runs before every file/shell tool** — no bypass
+5. **File tools enforce the sandbox path jail before every call.** Shell/`run_python` only check that the working directory is inside the sandbox, then run as the host user — the approval gate, not this check, is the boundary.
 6. **Validation always runs after tool execution** — not skippable
 7. **DB migrations distinguish error types** — no silent swallow of non-duplicate errors
 8. **Phase logging emits one structured line per phase** — always
