@@ -19,6 +19,44 @@ The companion + polish + reliability release. Layla stops being clinical when yo
 interface can speak your language, and the app has been hardened against the failure modes that actually
 break a local-first assistant.
 
+### 1.7.0 patch — 2026-08-11 (same release): end-to-end reliability + safety hardening
+
+An adversarial, run-it-don't-read-it verification pass (CPU **and** GPU/Blackwell, a live HTTP `/agent`
+turn, and an install/config/detection sweep) fixed real defects a user could actually hit:
+
+**Correctness / data integrity**
+- **Memory recall no longer dies on a cold/offline embedder** — `retrieve_relevant_memory` now falls back
+  to BM25/FTS as documented (it silently returned nothing before), and `search_learnings_fts` OR-matches
+  query terms so natural-language questions actually hit stored facts.
+- **`search_router`'s SQLite tiers were both dead** (a `limit=` vs `n=` kwarg mismatch + an import of a
+  non-existent `get_db`) — keyword search returned nothing on any no-vector-store install. Fixed + a
+  non-mocked guard test added.
+- **Multi-agent stream dropped the operator's message on Stop** — `agen_ma` gained the BL-245 abort-persist
+  its sibling paths already had.
+
+**Safety**
+- Latent **XSS** closed — the streaming reply sanitizer failed *open* when its global wasn't loaded; now
+  escapes (fails closed). The streaming output guard also now fails closed, matching the input/JSON guards.
+- Capability-manifest **disclosures are truncation-proof** — reordered disclosures-first so a tight head
+  budget can never strip the "I CANNOT / BROKEN" caveats and leave only the positive claims.
+- content_guard de-space evasion (`a k e y l o g g e r`) and url_guard CGNAT (`100.64.0.0/10`) closed.
+
+**Robustness / UX**
+- `save_learning` no longer spawns unbounded daemon threads (shared bounded pool).
+- A hung embedder leg can no longer stall the whole turn (per-leg retrieval timeout).
+- The hardware summary no longer mislabels **every** real install as a "sub-1B model" (it now resolves the
+  real model path before sizing).
+- A JSON typo in `runtime_config.json` no longer **silently** discards your config/model — it logs loudly
+  and records the parse error.
+- The interactive installer wizard now recommends a **hardware-appropriate** model (it was offering a 0.5B
+  to a 16 GB-VRAM workstation).
+
+**Internal / verification**
+- `build_system_head` (the ~1,117-line per-turn prompt assembler) decomposed into six named,
+  byte-identical helpers.
+- Verified live on real hardware: CPU inference, GPU (Blackwell `sm_120`) inference, and a streamed HTTP
+  `/agent` turn end-to-end.
+
 ### 1.7.0 patch — 2026-08-07 (same release)
 - **No more phantom "REFUSED: Manipulation and Coercion" after a normal reply.** On the Lilith aspect a small
   model would answer a benign, playful, or affectionate message and then tack on a spurious refusal block,
