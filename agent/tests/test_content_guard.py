@@ -183,8 +183,11 @@ class TestBlockedResponse:
     def test_tier1_message(self):
         result = GuardResult(blocked=True, tier=1, category="wmd_synthesis")
         msg = blocked_response(result)
-        assert "hardcoded" in msg.lower()
-        assert "cannot" in msg.lower()
+        # The tier-1 decline must convey a firm boundary that per-tier/age settings do not unlock —
+        # without the old "hardcoded / cannot be overridden" overclaim (the whole guard IS disabled by
+        # content_guard_enabled=False, so "cannot be overridden" was literally false).
+        assert "boundary" in msg.lower()
+        assert "not unlocked" in msg.lower() or "setting" in msg.lower()
 
     def test_tier2_message(self):
         result = GuardResult(blocked=True, tier=2, category="self_harm_instructions")

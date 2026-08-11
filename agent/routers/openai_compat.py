@@ -346,7 +346,13 @@ async def v1_chat_completions(req: dict, request: Request):
                 code="content_blocked", status_code=400,
             )
     except Exception as _cg_exc:
-        logger.debug("content_guard /v1 check skipped: %s", _cg_exc)
+        # FAIL CLOSED — an internal guard error must not pass unchecked input to the model (parity with
+        # the /agent router). content_guard almost never raises, so this only fires on a genuine fault.
+        logger.warning("content_guard: /v1 input check errored — blocking (fail closed): %s", _cg_exc)
+        return _v1_error(
+            "This request could not be safety-checked and was blocked.",
+            code="content_blocked", status_code=400,
+        )
 
     append_h = get_append_history()
 
@@ -566,7 +572,9 @@ async def v1_chat_completions(req: dict, request: Request):
                     logger.warning("content_guard: /v1 STREAM output blocked tier=%s cat=%s", _sout.tier, _sout.category)
                     response_text = _blocked_sout(_sout)
             except Exception:
-                pass
+                # FAIL CLOSED — do not commit/return unchecked output on a guard error (parity with /agent).
+                logger.warning("content_guard: /v1 stream output check errored — withholding (fail closed)")
+                response_text = "I can't share that response — a safety check could not complete."
             if not response_text:
                 response_text = "No response."
             # BL-297: if the LIVE gate cut the stream mid-payload, a raw SDK client has only the
@@ -703,7 +711,9 @@ async def v1_chat_completions(req: dict, request: Request):
             logger.warning("content_guard: /v1 output blocked tier=%s cat=%s", _out.tier, _out.category)
             response_text = _blocked_out(_out)
     except Exception:
-        pass
+        # FAIL CLOSED — withhold unverified output on a guard error (parity with the /agent JSON path).
+        logger.warning("content_guard: /v1 output check errored — withholding (fail closed)")
+        response_text = "I can't share that response — a safety check could not complete."
 
     commit_turn(
         conversation_id, goal, response_text,

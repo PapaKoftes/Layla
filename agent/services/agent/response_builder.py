@@ -1351,9 +1351,18 @@ def clean_reply_text(raw: str, aspect_names: tuple[str, ...] = (), status: str =
             t = polish_output(t, cfg)
         if apply_safety and t:
             from services.safety.content_guard import blocked_response, check_output
-            _o = check_output(t, cfg)
-            if _o.blocked:
-                t = blocked_response(_o)
+            try:
+                _o = check_output(t, cfg)
+                if _o.blocked:
+                    t = blocked_response(_o)
+            except Exception:
+                # FAIL CLOSED — this finalizer feeds background / subprocess / resume / execute_plan
+                # replies; if the safety floor errors, withhold rather than return unchecked text
+                # (parity with the /agent router). Narrow to the safety check so a polish error alone
+                # does not withhold a fine reply.
+                logging.getLogger("layla").warning(
+                    "content_guard: clean_reply_text safety floor errored — withholding (fail closed)")
+                t = "I can't share that response — a safety check could not complete. Please try again."
     except Exception:
         pass
     return t
