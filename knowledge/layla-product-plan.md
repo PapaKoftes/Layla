@@ -7,7 +7,7 @@
 ## What We Have (Strengths)
 
 - **Beautiful, functional UI** — dark occult aesthetic, aspect color theming, markdown/code rendering, voice I/O, streaming, SSE
-- **Rich agent loop** — 179 registered tools (see `agent/tests/test_registered_tools_count.py`), tool-dispatch loop, approval flow, audit log, sandbox enforcement
+- **Rich agent loop** — 204 registered tools (see `agent/tests/test_registered_tools_count.py`; the count a bare install *offers* is lower, since optional-lib tools are withheld), tool-dispatch loop, approval flow, audit log, sandbox enforcement (file tools path-jailed; shell/run_python gated by approval, not sandboxed)
 - **6 personality aspects** — rich character definitions, auto-routing, deliberation, earned titles
 - **Solid memory system** — SQLite + ChromaDB RAG, learnings, study plans, capabilities/evolution, memory graph
 - **Voice I/O** — faster-whisper STT + kokoro-onnx/pyttsx3 TTS (opt-in, off by default; install the voice extras and the UI mic/speaker controls light up — until then the endpoints return 503 with install guidance)
