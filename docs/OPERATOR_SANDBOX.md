@@ -1,6 +1,6 @@
 # Operator guide: sandbox and writable paths
 
-Layla restricts file and shell tools to paths under your configured **sandbox** unless a tool explicitly resolves paths differently.
+Layla's dedicated file tools (read/write/edit) are path-jailed to your configured **sandbox** (the jail holds against `..`, UNC, and junction tricks). Shell and `run_python` are different: they only require their *working directory* to be inside the sandbox — the command itself runs as your OS user with full host access, gated by a destructive-command denylist and the approval gate (which is the real boundary, not the denylist).
 
 ## Key config
 
@@ -9,7 +9,7 @@ Layla restricts file and shell tools to paths under your configured **sandbox** 
 
 ## What “inside sandbox” means
 
-[`layla/tools/registry.py`](../agent/layla/tools/registry.py) exposes `inside_sandbox(path)` checks used by filesystem and code tools. Paths **outside** the sandbox tree are rejected for those tools.
+[`layla/tools/registry.py`](../agent/layla/tools/registry.py) exposes `inside_sandbox(path)`. The filesystem read/write/edit tools reject paths **outside** the sandbox tree. Shell/`run_python` check only that their working directory is inside the tree — they do **not** confine what the launched process can then read, write, or reach on the network.
 
 ## Practical setup
 

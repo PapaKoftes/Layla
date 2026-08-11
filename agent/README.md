@@ -48,7 +48,7 @@ python serve.py                   # canonical launcher (port-conflict guard); or
 | Remote Access | Cloudflared tunnels, hashed token auth, IP allowlist, audit logging |
 | LLM Gateway | LiteLLM multi-provider with health circuit breaker and cost tracking |
 | Skill Packs | Install custom tool packs from Git with manifest validation and sandboxing |
-| Search | Meilisearch + Elasticsearch + SQLite FTS fallback chain |
+| Search | SQLite FTS (BM25) is the wired keyword path. Optional Elasticsearch *mirror* for keyword search when enabled; Meilisearch/Elasticsearch as *primary* backends exist but are not dispatched into recall. |
 | Research | Deep research missions with web crawling, PDF parsing, ArXiv/Wikipedia |
 | Voice | pyttsx3 TTS (default) + Faster Whisper STT; Kokoro opt-in (GPLv3), per-aspect voice settings |
 | Scheduler | APScheduler with 11 background jobs (memory consolidation, study review, health checks) |
