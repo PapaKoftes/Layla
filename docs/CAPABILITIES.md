@@ -1,6 +1,19 @@
 # Capabilities
 
-Layla's capability system allows multiple implementations per capability (e.g. vector_search → chromadb, faiss, qdrant). Candidates are curated in the registry; the system benchmarks them, validates in sandbox, and selects the best-performing implementation automatically.
+> **Status — read this first.** This documents the capability-registry + benchmarking **infrastructure**.
+> Dynamic "benchmark → validate → auto-select" is wired end-to-end for exactly **one** capability today:
+> the coding-model pick (`services/llm/model_router.py`). For everything else here (`vector_search`,
+> `embedding`, `reranker`, `web_scraper`) the registry and benchmark harness exist, but **the live
+> memory/recall path does not consume the selection** — `get_active_implementation()` is currently called
+> only in tests. In practice **ChromaDB is the only dispatched vector backend**, and setting
+> `vector_backend` to qdrant/faiss (or `search_backend` to meilisearch/elasticsearch) is *recognized but
+> not wired into recall*; `runtime_safety.validate_backend_selection` logs a startup warning when you pick
+> one. Read the auto-selection sections below as infrastructure/roadmap, not live behaviour. (The
+> Hardware-Aware Auto-Configuration section near the bottom **is** live.)
+
+Layla's capability system can hold multiple implementations per capability (e.g. `vector_search` →
+chromadb, faiss, qdrant) in a registry, with a benchmark harness to measure them. Automatic selection of
+the best implementation is wired only for the coding-model pick today — see the status note above.
 
 ---
 
@@ -10,12 +23,16 @@ Layla's capability system allows multiple implementations per capability (e.g. v
 
 Each capability may have multiple implementations:
 
-| Capability | Implementations | Default |
-|------------|-----------------|---------|
-| `vector_search` | chromadb, faiss, qdrant | chromadb |
-| `embedding` | sentence_transformers, openai | sentence_transformers |
-| `reranker` | cross_encoder, cohere | cross_encoder |
-| `web_scraper` | trafilatura, beautifulsoup | trafilatura |
+Each capability may have multiple *registered* implementations. **Registered ≠ dispatched:** for
+`vector_search`, only the `chromadb` default is actually used by recall — selecting `faiss`/`qdrant` is a
+no-op today (see the status note at the top).
+
+| Capability | Registered implementations | Default | Dispatched at runtime? |
+|------------|-----------------|---------|---------|
+| `vector_search` | chromadb, faiss, qdrant | chromadb | chromadb only |
+| `embedding` | sentence_transformers, openai | sentence_transformers | default only |
+| `reranker` | cross_encoder, cohere | cross_encoder | default only |
+| `web_scraper` | trafilatura, beautifulsoup | trafilatura | default only |
 
 ---
 
@@ -242,11 +259,6 @@ from services.hardware_probe import (
 ### Cache
 
 Results are cached in memory (TTL 1h) and on disk at
-`agent/.layla/hardware_probe_cache.json`.  Re-probe after hot-plugging a GPU:
-
-```bash
-curl -X POST http://localhost:8000/health/hardware_probe?force=true
-```
-
-(Endpoint served by the health router when implemented.)
+`agent/.layla/hardware_probe_cache.json`. Re-probe after hot-plugging a GPU via the Python API:
+`probe_hardware(force=True)`. There is no dedicated HTTP endpoint for a forced re-probe today.
 

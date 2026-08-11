@@ -27,9 +27,9 @@ So: **local-first**. Your machine, your data, your model.
 
 ---
 
-## The Five “Voices” (Aspects)
+## The Six “Voices” (Aspects)
 
-Layla has one mind but five **aspects**—different ways she responds, depending on what you need. You don’t have to pick every time; certain words in your message can auto-select an aspect.
+Layla has one mind but six **aspects**—different ways she responds, depending on what you need. You don’t have to pick every time; certain words in your message can auto-select an aspect.
 
 | Aspect | When she shows up | What she’s for |
 |--------|-------------------|----------------|
@@ -37,6 +37,7 @@ Layla has one mind but five **aspects**—different ways she responds, depending
 | **Nyx** | Research, study, explain, analyze, deep dive, parametric, CNC, geometry | **Knowledge.** Learns and explains. Slow, precise. Fabrication and domain learning. |
 | **Echo** | “How am I”, “notice”, “remember”, “check in”, “hey”, “hi”, session start | **Patterns.** Tracks how you work, recurring blockers, drift. Greets you on wakeup. |
 | **Eris** | Banter, games, music, chaos, “what do you think of” | **Creativity.** Alternative ideas, unconventional angles. Playful. |
+| **Cassandra** | “tell me straight”, “unfiltered”, “the hard truth”, blind spots, risks | **Unfiltered perception.** Names what others won’t—risks, blind spots, uncomfortable truths. |
 | **Lilith** | “Lilith”, “refuse”, “ethics”, “is this wrong”, “tell me the truth” | **Authority.** Final say. Gates file changes, code run, and what gets “learned.” |
 
 You can also **force** an aspect: e.g. “as Nyx, explain…” or by passing `aspect_id` in the API.
@@ -85,7 +86,7 @@ Here’s what is **implemented and usable today**.
 
 ### 2. **Read and understand your workspace**
 - **Project context:** She knows the current project name, lifecycle stage (idea / planning / prototype / iteration / execution / reflection), key files, and goals—if you set them (e.g. via `POST /project_context` or DB). She uses this to tailor help.
-- **File understanding:** She can **interpret intent** (not edit) for many file types:
+- **File understanding:** For ordinary code, text, and document files she reads **and** writes/edits/patches them (via the coding tools, behind the approval gate). For the specialized geometry/fabrication formats below she **reads and interprets intent only** — she does not yet generate or edit them:
   - **Geometry:** .3dm, .gh, .dxf, .dwg, .step, .stp, .iges, .igs, .stl, .obj  
   - **Fabrication:** .nc, .gcode, .tap, .sbp, and similar  
   - **Code/config:** .py, .ipynb, .json, .yaml, .toml  
@@ -117,7 +118,7 @@ Here’s what is **implemented and usable today**.
 
 **Finalized (in place and usable):**
 - North Star vision doc and implementation status map.
-- Five aspects (Morrigan, Nyx, Echo, Eris, Lilith) and structured deliberation.
+- Six aspects (Morrigan, Nyx, Echo, Eris, Cassandra, Lilith) and structured deliberation.
 - Project context + lifecycle + GET/POST API.
 - File ecosystem (intent understanding for all North Star file types).
 - Learning with usefulness scoring and selective reinforcement.
@@ -126,9 +127,11 @@ Here’s what is **implemented and usable today**.
 - Local-first server and DB.
 - CLI, TUI, Web UI, and MCP (Cursor) integration.
 
-**Future (designed, not built yet):**
-- **Remote command:** Architecture is local-first; “remote” could be added later without changing identity or safety.
-- **Project discovery:** Her proactively detecting opportunities or suggesting new projects (would still be gated).
+**Available but opt-in (off by default):**
+- **Remote access:** Local-first by default; remote access can be enabled (tunnel + token) — see `docs/REMOTE_ARCHITECTURE.md` and Getting Started. Identity and the approval gate are unchanged.
+
+**Partial / still limited:**
+- **Project discovery:** A sparse-workspace discovery brief exists (behind `project_discovery_auto_inject`), but broad proactive "here's a new project you should start" detection is not built. Anything she proposes stays gated.
 - **Initiative:** Her suggesting improvements or next steps on her own—always through approval.
 
 ---
@@ -137,7 +140,7 @@ Here’s what is **implemented and usable today**.
 
 You can say:
 
-- **“Layla is a local AI partner that runs on my machine. She has one persistent identity and memory, and five ‘modes’—execution, knowledge, patterns, creativity, and authority. She helps with code, fabrication, docs, and planning, and she never touches my files or runs code without my approval. She gets better over time in areas that actually matter, and she’s built to stay aligned with my workflow and grow with me over years.”**
+- **“Layla is a local AI partner that runs on my machine. She has one persistent identity and memory, and six ‘modes’—execution, knowledge, patterns, creativity, unfiltered perception, and authority. She helps with code, fabrication, docs, and planning, and she never touches my files or runs code without my approval. She gets better over time in areas that actually matter, and she’s built to stay aligned with my workflow and grow with me over years.”**
 
 For technical listeners:
 
