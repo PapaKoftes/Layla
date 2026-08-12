@@ -20,13 +20,13 @@ if errorlevel 1 (
     echo.
     echo  -----------------------------------------------
     echo   No model found.
-    echo   Download one now (hardware-matched, no editing):
+    echo   Download one now ^(hardware-matched, no editing^):
     echo.
     echo       .venv\Scripts\python.exe agent\install\provision_model.py
     echo.
-    echo   Then run START.bat again. (To pick manually instead,
+    echo   Then run START.bat again. ^(To pick manually instead,
     echo   see MODELS.md and set the filename in
-    echo   agent\runtime_config.json.)
+    echo   agent\runtime_config.json.^)
     echo  -----------------------------------------------
     echo.
     pause
@@ -42,3 +42,24 @@ REM another program on :8000 (auto-relocates to a free port, or opens the
 REM already-running instance), and opens the browser at the correct port.
 cd agent
 python serve.py
+set "LAYLA_RC=%ERRORLEVEL%"
+
+REM If Layla exited with an error, KEEP THIS WINDOW OPEN so the message above is
+REM readable. A double-click launch must never vanish on a crash. A clean stop
+REM (Ctrl+C -> exit code 0) closes normally.
+if not "%LAYLA_RC%"=="0" (
+    echo.
+    echo  ------------------------------------------------------------
+    echo   [!] Layla stopped with an error ^(exit code %LAYLA_RC%^).
+    echo       The details are in the text above this line.
+    echo.
+    echo   Common causes and fixes:
+    echo     - Port 8000 is busy ........... close the other program, or
+    echo                                     set "port" in agent\runtime_config.json
+    echo     - A dependency failed to load . re-run INSTALL.bat
+    echo     - The model is missing/broken . re-run INSTALL.bat, or see MODELS.md
+    echo  ------------------------------------------------------------
+    echo.
+    pause
+)
+endlocal
