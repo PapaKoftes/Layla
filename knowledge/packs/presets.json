@@ -1,0 +1,33 @@
+{
+  "companion": [
+    "core"
+  ],
+  "maker": [
+    "core",
+    "fabrication",
+    "embedded",
+    "engineering"
+  ],
+  "engineer": [
+    "core",
+    "engineering",
+    "reasoning"
+  ],
+  "researcher": [
+    "core",
+    "research",
+    "reasoning",
+    "psychology"
+  ],
+  "everything": [
+    "core",
+    "engineering",
+    "fabrication",
+    "embedded",
+    "research",
+    "reasoning",
+    "psychology",
+    "ethics",
+    "creative"
+  ]
+}

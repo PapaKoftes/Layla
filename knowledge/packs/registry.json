@@ -1,0 +1,101 @@
+{
+  "packs": {
+    "core": {
+      "id": "core",
+      "title": "Layla Core",
+      "aspect": "",
+      "summary": "Always-on self-knowledge: who Layla is, her six aspects, how memory/tools/knowledge work, honest limits.",
+      "docs": [
+        "layla-self.md"
+      ],
+      "approx_bytes": 3072
+    },
+    "embedded": {
+      "id": "embedded",
+      "title": "Arduino & Embedded",
+      "aspect": "morrigan",
+      "summary": "Microcontrollers, GPIO/ADC/PWM/interrupts, sensors, motors, I2C/SPI/UART, robotics, debugging.",
+      "docs": [
+        "arduino-patterns.md",
+        "communication-protocols.md",
+        "debugging-embedded.md",
+        "microcontroller-fundamentals.md",
+        "motor-control-and-robotics.md",
+        "sensors-and-actuators.md"
+      ],
+      "approx_bytes": 31967
+    },
+    "engineering": {
+      "id": "engineering",
+      "title": "Software Engineering",
+      "aspect": "morrigan",
+      "summary": "Debugging method, testing strategy, Pythonic idioms, git, API & data modeling, performance.",
+      "docs": [
+        "api-and-data-modeling.md",
+        "debugging-methodology.md",
+        "git-workflow.md",
+        "performance-and-profiling.md",
+        "python-idioms.md",
+        "testing-strategy.md"
+      ],
+      "approx_bytes": 36505
+    },
+    "fabrication": {
+      "id": "fabrication",
+      "title": "CNC & Fabrication",
+      "aspect": "morrigan",
+      "summary": "G-code, CAM workflow, nesting, feeds & speeds, sheet-goods, tooling & workholding.",
+      "docs": [
+        "cam-workflow.md",
+        "cnc-gcode-reference.md",
+        "feeds-and-speeds.md",
+        "materials-and-tooling.md",
+        "nesting-and-sheet-goods.md",
+        "workholding-and-safety.md"
+      ],
+      "approx_bytes": 34163
+    },
+    "psychology": {
+      "id": "psychology",
+      "title": "Communication & Collaboration",
+      "aspect": "echo",
+      "summary": "Non-clinical communication, feedback, motivation, active listening, conflict — skills, not therapy.",
+      "docs": [
+        "active-listening.md",
+        "collaboration-and-feedback.md",
+        "communication-fundamentals.md",
+        "conflict-and-negotiation.md",
+        "motivation-and-habits.md"
+      ],
+      "approx_bytes": 21714
+    },
+    "reasoning": {
+      "id": "reasoning",
+      "title": "Reasoning & Decisions",
+      "aspect": "cassandra",
+      "summary": "Cognitive biases, mental models, decision-making, base rates & forecasting, argument analysis.",
+      "docs": [
+        "argument-analysis.md",
+        "base-rates-and-forecasting.md",
+        "cognitive-biases-catalog.md",
+        "decision-making.md",
+        "mental-models.md"
+      ],
+      "approx_bytes": 23879
+    },
+    "research": {
+      "id": "research",
+      "title": "Research & Synthesis",
+      "aspect": "nyx",
+      "summary": "Framing questions, evaluating sources, search strategy, synthesis, verification & citation.",
+      "docs": [
+        "research-method.md",
+        "search-strategy.md",
+        "source-evaluation.md",
+        "synthesis-and-notetaking.md",
+        "verification-and-citation.md"
+      ],
+      "approx_bytes": 26073
+    }
+  }
+}

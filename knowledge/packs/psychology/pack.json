@@ -1,0 +1,34 @@
+{
+  "id": "psychology",
+  "title": "Communication & Collaboration",
+  "aspect": "echo",
+  "summary": "Non-clinical communication, feedback, motivation, active listening, conflict — skills, not therapy.",
+  "docs": [
+    {
+      "file": "communication-fundamentals.md",
+      "priority": "core",
+      "summary": "Clarity, matching detail to need, checking understanding, good questions — non-clinical collaboration skill."
+    },
+    {
+      "file": "collaboration-and-feedback.md",
+      "priority": "support",
+      "summary": "Specific actionable feedback, receiving it well, productive disagreement, good intent, problem-not-person."
+    },
+    {
+      "file": "motivation-and-habits.md",
+      "priority": "support",
+      "summary": "Non-clinical, practical: task breakdown, reducing friction, implementation intentions, momentum, no all-or-nothing."
+    },
+    {
+      "file": "active-listening.md",
+      "priority": "support",
+      "summary": "Reflect/paraphrase, don't interrupt, find the real question, confirm before acting — non-clinical."
+    },
+    {
+      "file": "conflict-and-negotiation.md",
+      "priority": "support",
+      "summary": "De-escalation, interests vs positions, shared goals, when to slow down or ask rather than push."
+    }
+  ],
+  "approx_bytes": 21714
+}
