@@ -61,7 +61,13 @@ function Get-NvidiaGpu {
 # NOTE: Blackwell (RTX 50-series / sm_120) needs NATIVE kernels the prebuilt wheel lacks - it will
 # load but run slower than CPU; use  install\enable_gpu.ps1 -Source  to build them (see GPU_BLACKWELL.md).
 function Add-CudaRuntimeDlls {
-    uv pip install --python $VPy nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 2>&1 | Out-Null
+    # Run uv BARE here (no 2>&1, no *>$null, no |Out-Null). Under Windows PowerShell 5.1
+    # with $ErrorActionPreference='Stop', ANY redirection of a native command's stderr wraps
+    # uv's benign progress lines ("Resolved N packages") as a NativeCommandError and ABORTS
+    # the whole install. Left bare, uv's output just goes to the console and the install
+    # proceeds (matching every other `uv pip install` call in this script). The DLL-copy
+    # below and the self-test's CPU fallback already handle a genuine cudart failure.
+    uv pip install --python $VPy nvidia-cuda-runtime-cu12 nvidia-cublas-cu12
     $lib = ".\.venv\Lib\site-packages\llama_cpp\lib"
     $sp  = ".\.venv\Lib\site-packages"
     if (-not (Test-Path $lib)) { return }
