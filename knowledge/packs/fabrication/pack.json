@@ -1,0 +1,15 @@
+{
+  "id": "fabrication",
+  "title": "CNC & Fabrication",
+  "aspect": "morrigan",
+  "summary": "G-code, CAM workflow, nesting, feeds & speeds, sheet-goods, tooling & workholding.",
+  "docs": [
+    "cnc-gcode-reference.md",
+    "cam-workflow.md",
+    "feeds-and-speeds.md",
+    "nesting-and-sheet-goods.md",
+    "materials-and-tooling.md",
+    "workholding-and-safety.md"
+  ],
+  "approx_bytes": 34163
+}

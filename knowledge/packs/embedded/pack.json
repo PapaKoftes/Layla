@@ -1,0 +1,45 @@
+{
+  "id": "embedded",
+  "title": "Arduino & Embedded",
+  "aspect": "morrigan",
+  "summary": "Microcontrollers, GPIO/ADC/PWM/interrupts, sensors, motors, I2C/SPI/UART, robotics, debugging.",
+  "docs": [
+    {
+      "file": "microcontroller-fundamentals.md",
+      "priority": "core",
+      "summary": "GPIO, ADC/DAC, PWM, timers/interrupts, logic levels, level shifting, power limits, and reading a datasheet.",
+      "bytes": 6202
+    },
+    {
+      "file": "arduino-patterns.md",
+      "priority": "support",
+      "summary": "Non-blocking millis() code, debouncing, state machines, serial debug, memory limits, String/watchdog footguns.",
+      "bytes": 4883
+    },
+    {
+      "file": "sensors-and-actuators.md",
+      "priority": "support",
+      "summary": "Reading pots/temp/ToF/IMU/encoders, driving LEDs/relays/servos/steppers/motors, MOSFETs, flyback diodes, filtering.",
+      "bytes": 5148
+    },
+    {
+      "file": "communication-protocols.md",
+      "priority": "support",
+      "summary": "UART, I2C, SPI, and CAN — when to use, wiring, addresses/pull-ups/modes/CS, speeds, and debugging.",
+      "bytes": 5067
+    },
+    {
+      "file": "motor-control-and-robotics.md",
+      "priority": "support",
+      "summary": "DC/servo/stepper differences, H-bridge/stepper drivers, PWM speed, encoder closed-loop, PID tuning, power budget.",
+      "bytes": 5371
+    },
+    {
+      "file": "debugging-embedded.md",
+      "priority": "support",
+      "summary": "Systematic bring-up (power->clock->blink->serial->peripheral), meters/analyzers/scopes, noise, brown-outs, HW vs FW.",
+      "bytes": 5296
+    }
+  ],
+  "approx_bytes": 31967
+}

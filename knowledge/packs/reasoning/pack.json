@@ -1,0 +1,14 @@
+{
+  "id": "reasoning",
+  "title": "Reasoning & Decisions",
+  "aspect": "cassandra",
+  "summary": "Cognitive biases, mental models, decision-making, base rates & forecasting, argument analysis.",
+  "docs": [
+    {"file": "cognitive-biases-catalog.md", "priority": "core", "bytes": 5558},
+    {"file": "mental-models.md", "priority": "support", "bytes": 4613},
+    {"file": "decision-making.md", "priority": "support", "bytes": 4275},
+    {"file": "base-rates-and-forecasting.md", "priority": "support", "bytes": 4529},
+    {"file": "argument-analysis.md", "priority": "support", "bytes": 4904}
+  ],
+  "approx_bytes": 23879
+}

@@ -1,0 +1,15 @@
+{
+  "id": "engineering",
+  "title": "Software Engineering",
+  "aspect": "morrigan",
+  "summary": "Debugging method, testing strategy, Pythonic idioms, git, API & data modeling, performance.",
+  "docs": [
+    {"file": "debugging-methodology.md", "priority": "core", "summary": "Systematic debugging: reproduce, isolate, hypothesize, instrument, fix, verify, prevent — and the traps to avoid."},
+    {"file": "testing-strategy.md", "priority": "support", "summary": "Test pyramid, behavior-not-implementation, fixtures, mocking boundaries, property tests, coverage, flakes, pytest."},
+    {"file": "python-idioms.md", "priority": "support", "summary": "Pythonic patterns and pitfalls: comprehensions, generators, context managers, dataclasses, typing, EAFP, GIL, pathlib."},
+    {"file": "git-workflow.md", "priority": "support", "summary": "Practical git: atomic commits, good messages, rebase vs merge, bisect, reflog safety net, conflicts, safe undo."},
+    {"file": "api-and-data-modeling.md", "priority": "support", "summary": "REST/HTTP semantics, resource design, pagination/errors/versioning, input validation, relational modeling & indexes."},
+    {"file": "performance-and-profiling.md", "priority": "support", "summary": "Measure-first, cProfile/timing, complexity intuition, caching, I/O vs CPU bound, avoiding premature optimization."}
+  ],
+  "approx_bytes": 36505
+}
