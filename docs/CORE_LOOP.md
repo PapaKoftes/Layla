@@ -246,7 +246,7 @@ Each phase has defined inputs, outputs, invariants, and failure modes. No phase 
 3. History appended exactly once per turn — no duplicates
 4. Approval records have expiry — no permanent orphans
 5. ContextVars cleared on all exit paths — normal and exception
-6. Sandbox check runs before every file/shell tool — no bypass
+6. Sandbox path-jail runs before every FILE tool. Shell/run_python only check that the working directory is inside the sandbox, then run as the host user — the approval gate, not this check, is the boundary
 7. Validation always runs after tool execution — not skippable
 8. DB migrations explicitly distinguish error types — no silent swallow
 9. Phase logging emits one structured line per phase — always
