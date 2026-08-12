@@ -959,8 +959,9 @@ refiner, execution, or validation.  Returns `plan_ready` status for human review
 ### Summary
 
 The core autonomous investigation engine (controller, planner, policy, budget,
-aggregator) is **stable and production-ready**.  The research pipeline is
-**structurally sound** but relies heavily on the autonomous engine underneath.
+aggregator) is **stable and well-exercised**.  The research pipeline is
+**structurally sound** but relies heavily on the autonomous engine underneath,
+and the storage/retrieval layer below has known fragility (see next).
 
 The main fragility points are in the storage/retrieval layer: wiki append-only
 growth, JSONL file size, and Jaccard token matching limitations.  The sub-agent

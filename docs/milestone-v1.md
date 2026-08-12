@@ -20,7 +20,7 @@ Layla is a local-first AI companion and engineering agent:
 
 - **100+ tools** across file, code, web, data, system
 - **Metadata**: name, description, category, risk_level (validated at startup)
-- **Sandbox**: All file/shell operations confined to `sandbox_root`
+- **Sandbox**: file read/write/edit tools are path-jailed to `sandbox_root`; shell/`run_python` are approval-gated but **not** confined (they run as the host user)
 - **Approval**: write/run require explicit approval when `allow_write`/`allow_run` enabled
 
 ---

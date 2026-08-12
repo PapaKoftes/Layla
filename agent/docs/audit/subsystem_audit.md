@@ -234,7 +234,7 @@
 - **`agent/fabrication_assist/`** + several `tests/test_fabrication_assist*.py` — CAD/CAM fabrication helper. STATUS: REAL but domain-specific.
 - **`agent/cursor-layla-mcp/`** (repo root) + `agent/services/mcp_client.py` — MCP integration. STATUS: REAL.
 - **`agent/skills/`** + `layla/skills/registry.py` + `services/markdown_skills.py` — skill packs system. STATUS: REAL.
-- **`services/sandbox/python_runner.py`** + `services/sandbox/shell_runner.py` — sandboxed code execution. STATUS: REAL.
+- **`services/sandbox/python_runner.py`** + `services/sandbox/shell_runner.py` — approval-gated code execution. STATUS: REAL, but NOT sandboxed — the process runs as the host user; the path-jail is on the dedicated file tools only, not on what a launched shell/python process can do. The approval gate is the boundary.
 - **`agent/discord_bot/`** (repo root) — Discord integration. STATUS: UNVERIFIED, separate from agent loop.
 - **`services/worker_pool.py`** + `services/worker_cgroup_linux.py` + `services/worker_os_limits.py` — resource limits for sandboxed workers. STATUS: REAL.
 - **`services/research_report.py`** + `routers/research.py` + the `research_*.py` collection in `agent/` root — research pipeline. STATUS: REAL.
