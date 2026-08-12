@@ -65,8 +65,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # tag name (v*) drives the release; body pulls the matching CHANGELOG section
-          generate_release_notes: true
+          # Curated, version-controlled install instructions — NOT auto-generated.
+          # generate_release_notes:true was appending a fresh "Full Changelog" line on
+          # every tag push (the body accumulated 7 duplicates). A fixed body_path keeps
+          # the notes stable and correct across rebuilds.
+          body_path: installer/RELEASE_NOTES.md
+          generate_release_notes: false
           fail_on_unmatched_files: false
           files: |
             dist-release/*.exe

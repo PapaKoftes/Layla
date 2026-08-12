@@ -39,6 +39,38 @@ HEALTH_URL = f"http://{HOST}:{PORT}/health"
 UI_URL = f"http://{HOST}:{PORT}/ui"
 
 
+def _launch_log_path() -> Path:
+    base = (os.environ.get("LAYLA_DATA_DIR") or "").strip() or str(Path.home())
+    return Path(base) / "logs" / "launch.log"
+
+
+def _fatal(title: str, message: str) -> None:
+    """Surface a fatal startup error to the user.
+
+    ``layla.exe`` is built windowed (``console=False``), so anything written to
+    stderr is invisible — a boot failure would otherwise look like nothing
+    happened. Append the message to launch.log and, on Windows, pop a MessageBox
+    so the user actually sees why Layla didn't start. Never raises.
+    Set ``LAYLA_NO_DIALOG=1`` to suppress the popup (used by automated tests).
+    """
+    sys.stderr.write(message + "\n")
+    log: Path | None = _launch_log_path()
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as fh:
+            fh.write(message + "\n")
+    except OSError:
+        log = None
+    if sys.platform == "win32" and (os.environ.get("LAYLA_NO_DIALOG", "") or "").strip().lower() not in ("1", "true", "yes", "on"):
+        try:
+            import ctypes
+
+            hint = f"\n\nA log was saved to:\n{log}" if log else ""
+            ctypes.windll.user32.MessageBoxW(None, message + hint, title, 0x10)  # MB_ICONERROR
+        except Exception:
+            pass
+
+
 def _resolve_install_root() -> Path:
     raw = (os.environ.get("LAYLA_INSTALL_ROOT") or "").strip()
     if raw:
@@ -123,7 +155,11 @@ def main() -> int:
 
     agent_dir = install_root / "agent"
     if not agent_dir.is_dir():
-        sys.stderr.write(f"Layla agent directory not found: {agent_dir}\n")
+        _fatal(
+            "Layla files missing",
+            f"Layla application files were not found here:\n{agent_dir}\n\n"
+            "The install may be incomplete — try reinstalling Layla.",
+        )
         return 2
 
     os.chdir(str(agent_dir))
@@ -147,7 +183,18 @@ def main() -> int:
             except OSError:
                 pass
 
-    proc = subprocess.Popen(cmd, cwd=str(agent_dir), env=env)
+    # Tee the server's own output to launch.log so a boot failure has a readable
+    # cause (this exe is windowed, so the child's stderr would otherwise vanish).
+    log_path = _launch_log_path()
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        _log_fh = log_path.open("w", encoding="utf-8")
+    except OSError:
+        _log_fh = None
+    proc = subprocess.Popen(
+        cmd, cwd=str(agent_dir), env=env,
+        stdout=_log_fh, stderr=subprocess.STDOUT if _log_fh else None,
+    )
     atexit.register(_terminate_proc)
 
     def _on_signal(_signum: int, _frame: object | None) -> None:
@@ -167,11 +214,20 @@ def main() -> int:
             if _health_ok():
                 break
             if proc.poll() is not None:
-                sys.stderr.write("Layla server exited before /health was ready.\n")
+                _fatal(
+                    "Layla could not start",
+                    "Layla's engine stopped before it finished starting.\n"
+                    "The saved log has the exact error (often: a missing model, "
+                    "a blocked port, or a dependency that failed to load).",
+                )
                 return 1
         else:
             proc.terminate()
-            sys.stderr.write("Timed out waiting for Layla /health.\n")
+            _fatal(
+                "Layla is taking too long",
+                "Layla started but did not become ready in time.\n"
+                "Try launching it again; the saved log has the details.",
+            )
             return 1
 
         _open_ui()
@@ -217,4 +273,16 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        _rc = main()
+    except SystemExit:
+        raise
+    except BaseException:  # noqa: BLE001 - last-resort: show *something* before exit
+        import traceback
+
+        _fatal(
+            "Layla failed to start",
+            "Layla hit an unexpected error while starting:\n\n" + traceback.format_exc(),
+        )
+        _rc = 1
+    raise SystemExit(_rc)
