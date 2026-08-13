@@ -104,9 +104,13 @@ _RIGHT_PANEL_SPINNER_PANES = {
     "mem-about":               ("renderMemoryAbout",       "workspace.js workspaceSubtabRefresh.memory -> showMemorySubTab"),
     # The conversation rail is not tab-routed — it is always visible, so it must load at BOOT.
     "chat-rail-list":          ("_renderSessionList",      "conversations.js initConversations() at boot"),
+    # Knowledge packs picker (v1.7.5) — loaded when the Settings overlay opens.
+    "knowledge-packs-list":    ("loadKnowledgePacks",      "settings-full.js openSettings()"),
 }
 # Loaders fired from a boot/init function rather than a tab route (always-visible panes).
 _BOOT_LOADED = {"chat-rail-list"}
+# Panes that live in the Settings overlay and load when it opens (openSettings), not from a tab route.
+_SETTINGS_LOADED = {"knowledge-packs-list"}
 # Panes whose placeholder is deliberate instructional copy ("click to load"), NOT a promise that data
 # is on its way. A user reading these knows to act; a spinner that never resolves lies to them.
 _LAZY_BY_DESIGN = {"mem-browse-list", "file-checkpoints-list"}
@@ -144,7 +148,7 @@ def test_registered_loaders_exist_and_are_reachable_from_a_route():
     assert subtab, "workspaceSubtabRefresh not found"
     tables = routing.group(0) + subtab.group(0)
     all_js = "".join(_read(f"components/{n}") for n in
-                     ("app.js", "workspace.js", "memory.js", "growth.js"))
+                     ("app.js", "workspace.js", "memory.js", "growth.js", "settings-full.js"))
     # Always-visible panes load at boot, not from a tab route. Pin that their init actually renders
     # them: initConversations() used to only bind search listeners, leaving the rail on "Loading…"
     # forever on a fresh page load, and tryLoadActiveConversationOnBoot() had zero callers so the
@@ -163,6 +167,12 @@ def test_registered_loaders_exist_and_are_reachable_from_a_route():
         assert loader in all_js + conv, f"{pane}: loader {loader}() does not exist"
         if pane in _BOOT_LOADED:
             continue  # asserted above against its init fn rather than a routing table
+        if pane in _SETTINGS_LOADED:
+            sf = _read("components/settings-full.js")
+            opener = re.search(r"(?:export )?function openSettings\([\s\S]*?\n}", sf)
+            assert opener and loader in opener.group(0), \
+                f"{pane}: {loader}() must be called from openSettings() in settings-full.js ({route})"
+            continue
         if loader == "renderMemoryAbout":
             # routed indirectly: the memory hook calls showMemorySubTab, which owns per-subtab loading
             assert "showMemorySubTab" in tables, f"{pane}: memory route must reach {loader} ({route})"

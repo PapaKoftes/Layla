@@ -1306,10 +1306,12 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
         _enabled = None
         _is_enabled = None
         try:
-            from .knowledge_packs import is_doc_enabled as _is_enabled, resolve_enabled_packs
             import runtime_safety as _rs
 
+            from .knowledge_packs import is_doc_enabled, resolve_enabled_packs
+
             _enabled = resolve_enabled_packs(_rs.load_config())
+            _is_enabled = is_doc_enabled
         except Exception:
             _is_enabled = None
         chunks: list[tuple[str, str, dict]] = []

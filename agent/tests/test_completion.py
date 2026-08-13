@@ -76,7 +76,10 @@ def test_needs_knowledge_rag_reflective_goals():
     assert agent_loop._needs_knowledge_rag("Please explain what a cognitive distortion is")
     assert agent_loop._needs_knowledge_rag("I keep avoiding hard conversations")
     assert agent_loop._needs_knowledge_rag("Can you help me reflect on this week")
-    assert not agent_loop._needs_knowledge_rag("fix the login bug in auth.py")
+    # v1.7.5: substantive tasks now consult the KB (retrieval is relevance-gated), so a real
+    # engineering task triggers RAG; only phatic/social turns stay off.
+    assert agent_loop._needs_knowledge_rag("fix the login bug in auth.py")
+    assert not agent_loop._needs_knowledge_rag("thanks!")
 
 
 def test_direct_feedback_and_psychology_pin_in_system_head():
