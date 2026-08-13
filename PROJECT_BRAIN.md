@@ -1,6 +1,6 @@
 # PROJECT_BRAIN — Layla (stable system summary)
 
-**Purpose:** One place to load **context before** scanning the whole tree. Use this with **`AGENTS.md`** (full manual), **`ARCHITECTURE.md`** (flow), **`docs/README.md`** (documentation hub / index), and **`docs/RULES.md`** (conventions). For a **ground-truth technical audit** (gaps, risks, route inventory), see **`docs/FULL_TECHNICAL_AUDIT.md`**. Update this file when the *shape* of the system changes (major routes, layout, or doc roles)—not every small commit.
+**Purpose:** One place to load **context before** scanning the whole tree. Use this with **`AGENTS.md`** (full manual), **`ARCHITECTURE.md`** (flow), **`docs/README.md`** (documentation hub / index), and **`docs/RULES.md`** (conventions). Update this file when the *shape* of the system changes (major routes, layout, or doc roles)—not every small commit.
 
 ---
 
@@ -26,7 +26,6 @@ For **exact current behavior** (routes, config defaults, Tier-0 prefetch order, 
 |------|--------|
 | File map, how to add tools/routes/aspects | **`AGENTS.md`** |
 | Vision / scope (canonical, rarely edit) | **`LAYLA_NORTH_STAR.md`** |
-| Code ↔ North Star status | **`docs/IMPLEMENTATION_STATUS.md`** |
 | Cost caps, `/health`, logging, safety mapping | **`docs/PRODUCTION_CONTRACT.md`** |
 | Naming, layout, allowed/forbidden edits | **`docs/RULES.md`** |
 | Backlog pointer (keep thin) | **`docs/TASKS.md`** |
@@ -71,7 +70,7 @@ The repo is set up for **disciplined** changes. **You** enforce the habit:
 1. **Small steps** — one logical change per pass (or one bug, one endpoint, one doc).
 2. **Tight scope** — state the goal in one sentence; do not expand into unrelated refactors.
 3. **Patch-style edits** — prefer minimal diffs: edit the smallest region, preserve structure, match existing patterns (**`docs/RULES.md`**, runtime **anti-drift** block).
-4. **Read order** — **`PROJECT_BRAIN.md`** (this) → **`AGENTS.md`** if touching code → **`ARCHITECTURE.md`** if flow changes → **`docs/IMPLEMENTATION_STATUS.md`** if North Star mapping moves → **`docs/MODULE_SWEEP_STATUS.md`** when scoping a subsystem; then open only the relevant **`docs/*_MODULE_SECOND_SWEEP.md`** for that area.
+4. **Read order** — **`PROJECT_BRAIN.md`** (this) → **`AGENTS.md`** if touching code → **`ARCHITECTURE.md`** if flow changes → **`docs/MODULE_SWEEP_STATUS.md`** when scoping a subsystem; then open only the relevant **`docs/*_MODULE_SECOND_SWEEP.md`** for that area.
 5. **Checklist before merge** — **`docs/RELEASE_CHECKLIST.md`** for commits you intend to ship.
 
 ---

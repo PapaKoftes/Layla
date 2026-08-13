@@ -414,16 +414,28 @@ def enrich_deliberation_context(context: str) -> str:
 
 
 def needs_knowledge_rag(goal: str) -> bool:
-    """True if goal suggests research/search/explain or reflective/psychology-informed chat — use full Chroma retrieval."""
-    if not (goal or "").strip():
+    """True when a turn should consult the knowledge base (domain packs + reference docs).
+
+    Fires for research/reflective phrasing AND for any substantive question or task. The
+    retrieval layer applies a relevance floor (``knowledge_min_similarity``), so casting a
+    wide net here never injects off-topic docs — a chit-chat turn simply retrieves nothing.
+    This is what lets a maker's practical question ("what feeds for MDF?", "which bit for
+    aluminium?") actually reach the fabrication/embedded knowledge, not just "research …"
+    queries. Only clearly phatic/trivial turns are skipped.
+    """
+    g = (goal or "").strip().lower()
+    if not g:
         return False
-    g = goal.lower()
-    research_kw = (
-        "research", "search", "explain", "look up", "what is",
-        "how does", "find out", "learn about",
-    )
-    if any(kw in g for kw in research_kw):
-        return True
+    # Phatic / social turns are never worth a knowledge lookup.
+    _stripped = g.rstrip("!?.,")
+    _phatic = {
+        "hi", "hello", "hey", "yo", "sup", "thanks", "thank you", "ty", "ok", "okay", "k",
+        "yes", "no", "yep", "nope", "sure", "cool", "nice", "great", "lol", "haha",
+        "good morning", "good night", "goodnight", "how are you", "what's up", "whats up",
+        "hey there", "hi there", "morning", "gm", "gn",
+    }
+    if _stripped in _phatic or len(_stripped) <= 2:
+        return False
     reflective_kw = (
         "reflect on", "self-reflect", "help me reflect", "overwhelmed",
         " i feel", "i'm feeling", "im feeling", "feeling stuck",
@@ -435,7 +447,18 @@ def needs_knowledge_rag(goal: str) -> bool:
         "mental health", "talk to a therapist", "panic attack",
         "depressed about", "anxious about",
     )
-    return any(kw in g for kw in reflective_kw)
+    if any(kw in g for kw in reflective_kw):
+        return True
+    # Any substantive question or task: retrieve. The relevance floor keeps it clean.
+    if "?" in g or len(g.split()) >= 4:
+        return True
+    _task_starts = (
+        "how ", "what ", "which ", "why ", "when ", "where ", "who ", "should ", "can ",
+        "do ", "does ", "is ", "are ", "build", "design", "make ", "fix", "help", "write",
+        "compare", "recommend", "suggest", "calculate", "convert", "plan ", "explain",
+        "research", "search", "look up", "find", "learn ",
+    )
+    return any(g.startswith(s) for s in _task_starts)
 
 
 def needs_graph(goal: str) -> bool:

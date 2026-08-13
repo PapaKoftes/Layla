@@ -29,7 +29,7 @@ Layla is a **self-hosted AI companion and engineering agent** that runs on the u
 | Web UI QA rubric | docs/WEB_UI_OPERATOR_RUBRIC.md |
 | CI / parity commands | [docs/VERIFICATION.md](docs/VERIFICATION.md) |
 
-Contributors: continue with **Repository map** below; update docs/IMPLEMENTATION_STATUS.md when you change request flow.
+Contributors: continue with **Repository map** below.
 
 ---
 
@@ -55,7 +55,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 5. **Never break the approval gate.** File writes (`write_file`, `apply_patch`) and code execution (`shell`, `run_python`) must remain gated by `allow_write`/`allow_run` + the approval flow.
 6. **Personalities are loaded dynamically** from `personalities/*.json`. Never hardcode an aspect list — always use `_load_aspects()` from `orchestrator.py`. The `systemPromptAddition` field is the character voice — it IS injected into every system head when that aspect is active. Do not truncate it. The `role` field is just a short label for routing and display.
 7. **The DB schema must migrate forward.** Add columns via `db.execute("ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...")` inside `_migrate_impl()` in `agent/layla/memory/migrations.py` (loaded by `migrate()`). `db.py` is a barrel that re-exports `migrate` / `_conn`. Never drop columns.
-8. **Keep `ARCHITECTURE.md` and `docs/IMPLEMENTATION_STATUS.md` updated** when you change the request flow, add routes, or implement a section from `docs/PRODUCT_VISION.md` *(note: `LAYLA_NORTH_STAR.md` is referenced in places but does not exist)*.
+8. **Keep `ARCHITECTURE.md` updated** when you change the request flow, add routes, or implement a section from `docs/PRODUCT_VISION.md` *(note: `LAYLA_NORTH_STAR.md` is referenced in places but does not exist)*.
 9. **Ethical AI** — All behavior must align with `docs/ETHICAL_AI_PRINCIPLES.md`. Never bypass approval, sandbox, or refusal.
 
 ---
@@ -174,7 +174,6 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 ├── START.bat / start.sh     # One-click launchers
 │
 ├── docs/
-│   ├── IMPLEMENTATION_STATUS.md  # Maps NORTH_STAR §§ to code files. Keep updated.
 │   ├── PRODUCTION_CONTRACT.md    # Operator guarantees: caps, safety, /health, logging
 │   ├── RULES.md                  # Naming, layout, allowed/forbidden patterns (AI + humans)
 │   ├── TASKS.md                  # Lightweight backlog pointer (avoid rot)
@@ -261,7 +260,6 @@ Client → POST /agent → routers/agent.py
 | `ARCHITECTURE.md` | Request flow changes, new routes, new state stores |
 | `docs/MODULE_SWEEP_TEMPLATE.md` / `docs/MODULE_SWEEP_STATUS.md` | New subsystem sweep doc or status row for a major area |
 | `PROJECT_BRAIN.md` | Top-level shape, doc roles, or pinned facts change |
-| `docs/IMPLEMENTATION_STATUS.md` | Any NORTH_STAR §§ are implemented or status changes |
 | `docs/STRUCTURED_ENGINEERING_PARTNER.md` | Engineering pipeline contracts, modes, or terminology change |
 | `docs/FABRICATION_IR_AND_TOOLCHAIN.md` | DXF→IR→G-code chain, machining_ir, or fabrication scope changes |
 | `docs/POST_AGENT_RESPONSE_CONTRACT.md` | `POST /agent` response shapes (pipeline, plans, fast path) change |
@@ -435,6 +433,5 @@ Tests live in `agent/tests/`. Key test files: `test_agent_loop.py`, `test_north_
 1. Read **`PROJECT_BRAIN.md`** (stable summary), then this file (`AGENTS.md`). Deep dives live under `docs/*_MODULE_SECOND_SWEEP.md`, indexed by **`docs/MODULE_SWEEP_STATUS.md`**.
 2. **If resuming from prior AI session:** Read `docs/AI_HANDOFF_REPORT.md` for historical cumulative state; **latest session handoff (2026-04-02 — Web UI, `/health`, chat UX, integrations zips):** `docs/AI_HANDOFF_SESSION_2026-04-02.md`
 3. Read `ARCHITECTURE.md` for the request flow
-4. Read `docs/IMPLEMENTATION_STATUS.md` to know what's implemented vs planned
-5. Read the specific file you're about to change
-6. Never change `docs/PRODUCT_VISION.md` *(note: `LAYLA_NORTH_STAR.md` is referenced in places but does not exist)* unless told to
+4. Read the specific file you're about to change
+5. Never change `docs/PRODUCT_VISION.md` *(note: `LAYLA_NORTH_STAR.md` is referenced in places but does not exist)* unless told to

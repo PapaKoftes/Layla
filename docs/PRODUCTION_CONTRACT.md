@@ -113,4 +113,4 @@ See merged defaults in `agent/runtime_safety.py` and the annotated template `age
 
 ## Revision
 
-When request limits, `/health` shape, or safety gates change, update this file and IMPLEMENTATION_STATUS.md.
+When request limits, `/health` shape, or safety gates change, update this file.
