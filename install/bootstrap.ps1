@@ -137,6 +137,22 @@ uv pip install --python $VPy torch --index-url https://download.pytorch.org/whl/
 # for real browser automation - see README.)
 uv pip install --python $VPy -e ".[cpu,llm,research,crawl]"
 
+# 4b) Playwright browser binary. The `crawl` extra installs the playwright PACKAGE but not the
+# Chromium it drives, so browser tools would fail on first use with "install chromium". Fetch it now
+# while we know we're online. Non-fatal: browser automation is optional; if this fails the browser
+# tools stay unavailable and everything else still works. Run BARE (no 2>&1/|Out-Null) and inside
+# try/catch — under PowerShell 5.1 + ErrorActionPreference=Stop, redirecting a native command's
+# stderr aborts the whole script (the same trap that broke the CUDA step).
+try {
+    Write-Host "==> Installing Playwright Chromium (browser automation) ..."
+    & $VPy -m playwright install chromium
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Playwright Chromium not installed (exit $LASTEXITCODE). Browser tools stay off until you run: .venv\Scripts\python.exe -m playwright install chromium"
+    }
+} catch {
+    Write-Warning "Playwright browser install skipped: $_"
+}
+
 # 5) detect hardware -> provision the best coding kit + write config
 if ($SkipModel) {
     Write-Host "[5/7] Skipping model download (-SkipModel). Later: .\.venv\Scripts\python.exe agent\install\provision_model.py"

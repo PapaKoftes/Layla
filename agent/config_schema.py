@@ -414,6 +414,13 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": False,
         "hint": "DANGEROUS: auto-approve tools with no prompt and no checkpoint. GUARDED: while safe_mode is on (the default), this still does NOT skip approval for destructive tools (writes, shell, run_python, git, …) — to fully auto-approve those you must also turn safe_mode off. Ignored entirely when remote_enabled is on. Off by default; leave off unless you know what you're doing.",
     },
+    {
+        "key": "auto_approve_tools",
+        "type": "list",
+        "category": "safety",
+        "default": [],
+        "hint": "Customizable safety: auto-approve ONLY these specific tools by name (e.g. browser_click, clipboard_read) without a prompt — so Layla stops asking for the ones you trust while still asking for the rest. Subject to the SAME floors as tool_approval_bypass: safe_mode still gates destructive tools (writes/shell/run_python/git) and it is ignored while remote_enabled is on. The hard shell blocklist (rm/dd/format/…) always applies.",
+    },
     # ── Integrations (Discord, Slack, etc.) ──
     {
         "key": "mcp_client_enabled",

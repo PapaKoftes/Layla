@@ -663,6 +663,7 @@ def load_config() -> dict:
             "admin_auto_checkpoint": True,
             "admin_blocklist_override": False,
             "tool_approval_bypass": False,
+            "auto_approve_tools": [],
             "remote_cors_origins": [],
             "cloudflared_path": "",
             # Autonomous Research v2 (Tier 0 only; proposal-only; local-first)
