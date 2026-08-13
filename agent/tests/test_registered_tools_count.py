@@ -16,7 +16,7 @@ if str(AGENT_DIR) not in sys.path:
 from layla.tools import registry  # noqa: E402
 
 # Bump when domain TOOLS dicts change (see layla/tools/domains/*.py).
-EXPECTED_TOOL_COUNT = 206  # +code_definition (jedi), +ml_analyze (sklearn); semgrep added as a security_scan mode
+EXPECTED_TOOL_COUNT = 207  # +code_definition, +ml_analyze, +benchmark_hardware; semgrep is a security_scan mode
 
 
 def test_tools_dict_count_matches_manifest():

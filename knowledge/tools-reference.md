@@ -4,7 +4,7 @@ domain: tools
 aspect: morrigan
 ---
 
-# Tools Reference — 206 registered tools
+# Tools Reference — 207 registered tools
 
 Layla's complete tool registry. (Authoritative count: `EXPECTED_TOOL_COUNT` in `agent/tests/test_registered_tools_count.py`; a bare install *offers* fewer, since optional-lib tools are withheld.) Dangerous tools require `allow_run=true` AND approval via `POST /approve` before they execute.
 

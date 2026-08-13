@@ -33,6 +33,11 @@ TOOLS = {
         "category": "system",
         "description": "Show system environment: Python version, OS, CPU, RAM, GPU, and key paths.",
     },
+    "benchmark_hardware": {
+        "dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True,
+        "category": "system",
+        "description": "Report this machine's capability tier + the settings Layla auto-tuned for it (context window, GPU offload, pipeline richness) with a plain-English summary. Set measure_speed=true for a tokens/sec benchmark (needs a loaded model).",
+    },
     "disk_usage": {
         "dangerous": False, "require_approval": False, "risk_level": "low",
         "category": "system",
