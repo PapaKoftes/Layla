@@ -77,6 +77,9 @@ _NOT_IMPORTED_OK = {
     "bandit": "CLI only: invoked as `[sys.executable, '-m', 'bandit', ...]` via subprocess in "
               "layla/tools/impl/code.py security_scan(). Never imported, so it cannot flip an "
               "import path.",
+    "semgrep": "CLI only: invoked as `[sys.executable, '-m', 'semgrep', 'scan', ...]` via subprocess "
+               "in layla/tools/impl/code.py security_scan(scan_type='semgrep'). Never imported. Also "
+               "gated `platform_system != 'Windows'` (semgrep ships no Windows wheels).",
     "python-multipart": "Imported by FastAPI internally (as `multipart`) to parse form data; "
                         "our code never imports it directly.",
     "python-telegram-bot": "[transports] extra: imported as `telegram` by the repo-root transports/ "

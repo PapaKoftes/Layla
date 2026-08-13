@@ -160,6 +160,10 @@ export async function openSettings() {
   // /knowledge/packs and populates its own panel, degrading to "unavailable" if the API is absent,
   // so it can never block or break the rest of the settings form from rendering.
   loadKnowledgePacks();
+  // knowledge-presets-1.7.5 Approvals & safety. Same fire-and-forget shape as the loaders above:
+  // it GETs /settings, derives the approval mode from three keys and paints the selector, degrading
+  // to "leave the static markup as-is" if the read fails — so it can never block the rest of the form.
+  loadApprovalsSafety();
   const loadEl = document.getElementById('settings-loading');
   const formEl = document.getElementById('settings-form');
   if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = T('settings.loading', 'Loading…'); }
@@ -979,6 +983,158 @@ export function onKnowledgePackToggle() {
   if (sel) sel.value = 'custom';   // programmatic .value does not fire change → no recursion
 }
 try { window.onKnowledgePackToggle = onKnowledgePackToggle; } catch (_e) { /* no-op */ }
+
+// ── Approvals & safety (knowledge-presets-1.7.5) ──────────────────────────────
+// A Claude-Code-style permission control so the user isn't approving every action, with a
+// visible safety guardrail. A single mode selector maps to three config keys saved through the
+// normal POST /settings path:
+//   tool_approval_bypass (bool)  — auto-approve tools with no prompt
+//   safe_mode (bool, default on) — HARD FLOOR: destructive tools (writes/shell/run_python/git/
+//                                  sends) STILL require approval even when bypass is on
+//   auto_approve_tools (list)    — auto-approve ONLY these named tools, subject to the same floors
+// All three are remote-protected server-side, so a save from a remote client is rejected and this
+// panel reports which keys were refused rather than claiming a silent success.
+//
+// The five tools offered for per-tool auto-approve are privacy/interaction tools — none of them
+// write files, run code, or send messages — so trusting them cannot bypass the destructive floor.
+const _APPROVAL_SAFE_TOOLS = ['browser_click', 'browser_fill', 'clipboard_read', 'clipboard_write', 'screenshot_desktop'];
+
+// mode → the exact config combo it writes. `trusted` fills auto_approve_tools from the checklist
+// at save time; the others set a fixed combo. See saveApprovalsSafety.
+const _APPROVAL_MODE_COMBOS = {
+  ask:     { tool_approval_bypass: false, safe_mode: true, auto_approve_tools: [] },
+  trusted: { tool_approval_bypass: false, safe_mode: true },  // auto_approve_tools = checked tools
+  guarded: { tool_approval_bypass: true,  safe_mode: true },
+  full:    { tool_approval_bypass: true,  safe_mode: false },
+};
+
+/** Derive the selector mode from the three stored keys. `safe_mode` defaults ON (true) when unset. */
+function _deriveApprovalMode(cfg) {
+  const bypass = !!(cfg && cfg.tool_approval_bypass);
+  const safe = !(cfg && cfg.safe_mode === false);   // default true
+  const tools = Array.isArray(cfg && cfg.auto_approve_tools) ? cfg.auto_approve_tools : [];
+  if (bypass && !safe) return 'full';
+  if (bypass && safe) return 'guarded';
+  if (!bypass && safe && tools.length) return 'trusted';
+  if (!bypass && safe && !tools.length) return 'ask';
+  return 'custom';   // e.g. bypass off + safe_mode off — not one of the four presets
+}
+
+/** The value of the checked mode radio, or 'ask' if none is checked. */
+function _selectedApprovalMode() {
+  const el = document.querySelector('input[name="approval-mode"]:checked');
+  return el ? el.value : 'ask';
+}
+
+/** Check the radio for `mode`. 'custom' checks the disabled read-only Custom radio. */
+function _setApprovalRadio(mode) {
+  const el = document.querySelector('input[name="approval-mode"][value="' + mode + '"]');
+  if (el) el.checked = true;
+}
+
+/** Show the trusted-tools checklist for trusted/custom, and the guarded/full notes for their modes. */
+function _reflectApprovalMode(mode) {
+  const show = function (id, on) { const el = document.getElementById(id); if (el) el.hidden = !on; };
+  show('approval-trusted-tools', mode === 'trusted' || mode === 'custom');
+  show('approval-guarded-note', mode === 'guarded');
+  show('approval-full-note', mode === 'full');
+}
+
+/**
+ * Populate the Approvals & safety panel from the server on panel open (openSettings) — same
+ * fire-and-forget shape as loadKnowledgePacks()/loadAppearance(). GETs /settings, derives the
+ * mode from the three keys, checks the matching radio, fills the tool checklist, and reveals the
+ * right notes. A failed GET leaves the static markup as-is rather than throwing.
+ */
+export async function loadApprovalsSafety() {
+  const wrap = document.getElementById('approvals-safety');
+  if (!wrap) return;
+  try {
+    const r = await fetch('/settings');
+    const cfg = await r.json().catch(function () { return {}; });
+    const tools = Array.isArray(cfg && cfg.auto_approve_tools) ? cfg.auto_approve_tools : [];
+    _APPROVAL_SAFE_TOOLS.forEach(function (name) {
+      const cb = document.getElementById('approve_tool_' + name);
+      if (cb) cb.checked = tools.indexOf(name) !== -1;
+    });
+    const mode = _deriveApprovalMode(cfg);
+    _setApprovalRadio(mode);
+    _reflectApprovalMode(mode);
+  } catch (_e) {
+    console.debug('loadApprovalsSafety:', _e);
+  }
+}
+try { window.loadApprovalsSafety = loadApprovalsSafety; } catch (_e) { /* no-op */ }
+
+/** A mode radio changed — reveal the checklist/notes for the newly chosen mode. */
+export function onApprovalModeChange(mode) {
+  _reflectApprovalMode(mode || _selectedApprovalMode());
+}
+try { window.onApprovalModeChange = onApprovalModeChange; } catch (_e) { /* no-op */ }
+
+/**
+ * Persist the chosen mode's config combo through POST /settings — the same save path the rest of
+ * this file uses. Reports what the SERVER did: the three keys are remote-protected, so a save from
+ * a remote client comes back with `rejected` and this says which keys were refused rather than
+ * printing a green success over a write that never landed.
+ */
+export async function saveApprovalsSafety() {
+  const msg = document.getElementById('approvals-save-msg');
+  const say = function (text, isErr) {
+    if (msg) {
+      msg.style.display = 'inline';
+      msg.textContent = text;
+      msg.setAttribute('data-kind', isErr ? 'warn' : 'ok');
+      if (!isErr) setTimeout(function () { msg.style.display = 'none'; }, 2200);
+    }
+    showToast(text);
+  };
+  const mode = _selectedApprovalMode();
+  if (mode === 'custom') {
+    // Custom is a read-only display of a config that matches no preset. There is no combo to write.
+    say(T('settings.approvals.pick_mode', 'Pick a mode above to apply a preset.'), true);
+    return;
+  }
+  const combo = _APPROVAL_MODE_COMBOS[mode];
+  if (!combo) { say(T('settings.approvals.pick_mode', 'Pick a mode above to apply a preset.'), true); return; }
+  const body = { tool_approval_bypass: combo.tool_approval_bypass, safe_mode: combo.safe_mode };
+  if (mode === 'ask') {
+    body.auto_approve_tools = [];
+  } else if (mode === 'trusted') {
+    const picked = [];
+    _APPROVAL_SAFE_TOOLS.forEach(function (name) {
+      const cb = document.getElementById('approve_tool_' + name);
+      if (cb && cb.checked) picked.push(name);
+    });
+    body.auto_approve_tools = picked;
+  }
+  const btn = document.getElementById('approvals-save-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(function () { return {}; });
+    const rejected = (d && d.rejected) || [];
+    if (!r.ok || !d || !d.ok) {
+      if (rejected.length) {
+        say(T('settings.approvals.rejected', 'Rejected: {keys} — a remote client cannot change approval or safety settings.', { keys: rejected.join(', ') }), true);
+      } else {
+        say(T('settings.save.failed_reason', 'Save failed — {why}', { why: ((d && d.error) || ('HTTP ' + r.status)) }), true);
+      }
+      return;
+    }
+    const label = T('settings.approvals.mode_' + mode, mode);
+    say(T('settings.approvals.saved', 'Saved — approval mode: {mode}', { mode: label }), false);
+  } catch (_e) {
+    say(T('settings.save_failed', 'Save failed'), true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+try { window.saveApprovalsSafety = saveApprovalsSafety; } catch (_e) { /* no-op */ }
 
 /**
  * POST the selected packs, then reflect what the SERVER says is enabled + the fresh chunk count.
