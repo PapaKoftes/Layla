@@ -185,40 +185,10 @@ def _record_embedder_failure(err: Exception) -> None:
 def embedder_is_loaded() -> bool:
     """True once an embedder has been successfully loaded (cheap, no network, no load attempt).
 
-    The prompt builder uses this to decide whether the knowledge-RAG path is a fast in-memory lookup
-    (embedder already warm) or a potential cold DOWNLOAD that must be time-boxed off the hot path."""
+    The prompt builder uses this to gate the knowledge-RAG path: it only retrieves when the embedder is
+    ALREADY warm, so a cold first turn degrades to the static reference docs instead of blocking on a
+    multi-hundred-MB model load. The embedder is warmed out-of-band by the app's startup warmup thread."""
     return _embedder is not None
-
-
-def run_with_time_budget(fn, budget_s: float):
-    """Run fn() but stop waiting after budget_s seconds. Returns (completed: bool, result).
-
-    On timeout the worker is NOT killed — it keeps running as a daemon. For embedder warmup that is the
-    point: the caller degrades to static knowledge THIS turn while the download finishes in the background
-    and warms the cache for the next turn, instead of freezing the user's first substantive turn behind a
-    multi-hundred-MB HuggingFace download on a slow or cold network.
-
-    Never raises fn's exception: a failed fn returns (True, None), which callers read as "no result, use
-    the fallback" — identical to the timeout's (False, None) for their purposes.
-    """
-    import threading
-
-    box: dict[str, Any] = {}
-
-    def _worker() -> None:
-        try:
-            box["r"] = fn()
-        except BaseException as e:  # noqa: BLE001 — degradation path must never propagate
-            box["err"] = e
-
-    t = threading.Thread(target=_worker, daemon=True, name="knowledge-rag-budget")
-    t.start()
-    t.join(max(0.1, float(budget_s)))
-    if t.is_alive():
-        return (False, None)          # timed out; worker keeps warming the cache in the background
-    if "err" in box:
-        return (True, None)           # ran but failed; caller falls through to its own fallback
-    return (True, box.get("r"))
 
 
 def embedder_status() -> dict[str, Any]:
