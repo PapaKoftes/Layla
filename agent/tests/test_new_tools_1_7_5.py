@@ -60,3 +60,13 @@ def test_semgrep_mode_is_graceful(sandbox):
     r = security_scan(str(f), scan_type="semgrep")
     # Either it ran (ok True) or it's absent — but NEVER a fake clean result with no scan.
     assert r["ok"] is True or "semgrep" in r["error"].lower()
+
+
+def test_benchmark_hardware_reports_tier_and_profile():
+    from layla.tools.impl.system import benchmark_hardware
+    r = benchmark_hardware()  # measure_speed defaults False -> no model needed, cheap
+    assert r["ok"] is True
+    assert r["tier"] in ("potato", "cpu", "cpu_plus", "gpu_low", "gpu_mid", "gpu_high", "unknown")
+    assert r["accelerator"] in ("cpu", "gpu")
+    assert "n_ctx" in r["applied_settings"]
+    assert isinstance(r["summary"], str) and r["summary"]
