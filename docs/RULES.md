@@ -58,5 +58,5 @@ Binding conventions for **humans and AI agents** working on this repo. Stricter 
 
 1. Read **`PROJECT_BRAIN.md`**, then **`AGENTS.md`**.
 2. Align with **`LAYLA_NORTH_STAR.md`** (do not edit unless the operator asks).
-3. Check **`docs/IMPLEMENTATION_STATUS.md`** and **`docs/PRODUCTION_CONTRACT.md`** before changing behavior that affects safety or cost caps.
-4. Update **`PROJECT_BRAIN.md`** when top-level shape or doc roles change; update **`ARCHITECTURE.md`** / **`docs/IMPLEMENTATION_STATUS.md`** when request flow or mapped features change.
+3. Check **`docs/PRODUCTION_CONTRACT.md`** before changing behavior that affects safety or cost caps.
+4. Update **`PROJECT_BRAIN.md`** when top-level shape or doc roles change; update **`ARCHITECTURE.md`** when request flow or mapped features change.

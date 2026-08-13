@@ -59,6 +59,9 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "use_chroma", "type": "boolean", "category": "memory", "default": True, "hint": "Use ChromaDB for semantic search and learnings."},
     {"key": "embedder_prefer_quality", "type": "boolean", "category": "memory", "default": False, "hint": "Prefer heavier sentence-transformers embeddings over fast model2vec static embeddings (needs torch; better quality, slower on low-end)."},
     {"key": "knowledge_chunks_k", "type": "number", "category": "memory", "default": 5, "min": 1, "max": 20, "hint": "Chunks retrieved from knowledge base."},
+    {"key": "knowledge_min_similarity", "type": "number", "category": "memory", "default": 0.40, "min": 0.0, "max": 1.0, "hint": "Relevance floor for knowledge retrieval (cosine sim). Higher = stricter/less noise; lower = more recall."},
+    {"key": "knowledge_preset", "type": "string", "category": "memory", "default": "", "hint": "Knowledge pack bundle: companion | maker | engineer | researcher | everything. Empty = all packs. See docs/design/KNOWLEDGE_PRESETS.md."},
+    {"key": "knowledge_packs", "type": "list", "category": "memory", "default": [], "hint": "Explicit list of enabled knowledge pack ids (overrides knowledge_preset). Empty = all. 'core' is always on."},
     {"key": "learnings_n", "type": "number", "category": "memory", "default": 30, "min": 5, "max": 100, "hint": "Learnings injected into context."},
     {"key": "semantic_k", "type": "number", "category": "memory", "default": 5, "min": 1, "max": 20, "hint": "Semantic search results."},
     {

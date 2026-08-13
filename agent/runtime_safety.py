@@ -1347,10 +1347,21 @@ def load_knowledge_docs(max_bytes: int = 6000) -> str:
     knowledge_dir = REPO_ROOT / "knowledge"
     if not knowledge_dir.exists():
         return ""
+    # Preset scoping (v1.7.5): when the operator has selected a preset/pack set, only inject
+    # docs from enabled packs. Default (nothing configured) -> _enabled is None -> all docs.
+    _enabled = None
+    _is_enabled = None
+    try:
+        from layla.memory.knowledge_packs import is_doc_enabled as _is_enabled, resolve_enabled_packs
+        _enabled = resolve_enabled_packs(load_config())
+    except Exception:
+        _is_enabled = None
     collected = []
     for ext in ("*.md", "*.txt"):
         for f in sorted(knowledge_dir.rglob(ext)):
             if ".identity" in str(f):
+                continue
+            if _is_enabled is not None and not _is_enabled(f, _enabled):
                 continue
             try:
                 text = _read_cached(f)

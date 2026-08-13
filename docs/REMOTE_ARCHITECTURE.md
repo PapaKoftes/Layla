@@ -46,7 +46,7 @@ Remote access is **opt-in** and **does not introduce autonomy**. Same approval f
 
 - No background loops, scheduling, or auto-execution for remote.
 - All tool approvals work exactly as local; remote only exposes the same API over authenticated HTTP.
-- **System is non-autonomous by design** (see IMPLEMENTATION_STATUS.md).
+- **System is non-autonomous by design.**
 
 ### Tests
 
