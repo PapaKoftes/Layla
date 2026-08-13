@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+
+## [1.7.5] — unreleased
+
+### Added
+- **Knowledge packs + presets.** Curated domain knowledge under `knowledge/packs/` (core, fabrication, embedded, engineering, research, reasoning, psychology). Pick a bundle via `knowledge_preset` (companion / maker / engineer / researcher / everything) or an explicit `knowledge_packs` list; `core` is always on and your loose `knowledge/` files are never filtered.
+- **Settings → Knowledge packs** UI (preset dropdown + per-pack toggles + live indexed-chunk count) and `GET`/`POST /knowledge/packs`. Toggling a pack re-indexes scoped, so disabled packs drop out of search.
+- First-run wizard maps your purpose choice to a starting preset.
+- Config: `knowledge_min_similarity`, `knowledge_preset`, `knowledge_packs`.
+
+### Fixed
+- **Knowledge retrieval now fires for practical questions**, not just "research/explain" phrasing — a maker's "what feeds for MDF?" reaches the fabrication pack. A relevance floor (`knowledge_min_similarity`, default 0.40) keeps chit-chat turns clean. Verified: domain queries retrieve, phatic turns retrieve nothing.
+- Corrected docstrings that claimed knowledge RAG is Chroma-only — it works on the compiler-free fallback store (large KB is searchable on a default install).
+- Context pollution: stale tool count (157 → 204), 13 dead doc links removed, stale planning-doc counts fixed, `services/infrastructure/README.md` added.
+
 ## [1.7.0] — 2026-08-06
 
 The companion + polish + reliability release. Layla stops being clinical when you're hurting, the whole

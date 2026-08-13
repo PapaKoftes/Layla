@@ -156,6 +156,10 @@ export async function openSettings() {
   // so the feature was a caller and two elements short of working. It is pure local computation
   // (location.* → a LAN URL), no fetch, so it cannot slow the panel down.
   loadPhoneAccess();
+  // v1.7.5 Knowledge packs. Fire-and-forget like the appearance/phone loaders above: it fetches
+  // /knowledge/packs and populates its own panel, degrading to "unavailable" if the API is absent,
+  // so it can never block or break the rest of the settings form from rendering.
+  loadKnowledgePacks();
   const loadEl = document.getElementById('settings-loading');
   const formEl = document.getElementById('settings-form');
   if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = T('settings.loading', 'Loading…'); }
@@ -864,6 +868,158 @@ export async function saveAppearanceLite() {
     showToast(T('settings.save_failed', 'Save failed'));
   }
 }
+
+// ── Knowledge packs (v1.7.5) ─────────────────────────────────────────────────
+// Domain knowledge packs Layla indexes for retrieval. GET /knowledge/packs lists the packs, the
+// named presets, the current enabled preset and the indexed-chunk count; POST /knowledge/packs sets
+// the enabled set (an explicit list OR a named preset) and re-indexes. `core` is always on and its
+// checkbox is locked. The panel degrades to "Knowledge packs unavailable" if the API is not there —
+// the endpoint ships in parallel, so a client that predates it must not throw.
+let _knowledgePresets = {};
+
+/** approx_bytes → a short human size, e.g. 34816 → "34 KB". */
+function _fmtBytes(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return Math.round(b / 1024) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/** "1,240 chunks indexed" — thousands-separated so a five-figure corpus is readable at a glance. */
+function _fmtChunks(n) {
+  return T('settings.knowledge.chunks_indexed', '{n} chunks indexed', { n: (Number(n) || 0).toLocaleString() });
+}
+
+/** The ticked pack ids, `core` always included (it is locked on, so its box may be disabled). */
+function _selectedKnowledgePacks() {
+  const out = [];
+  document.querySelectorAll('#knowledge-packs-list input[type="checkbox"][data-pack]').forEach(function (cb) {
+    const pid = cb.getAttribute('data-pack');
+    if (cb.checked && out.indexOf(pid) === -1) out.push(pid);
+  });
+  if (out.indexOf('core') === -1) out.unshift('core');
+  return out;
+}
+
+/**
+ * Populate the Knowledge packs panel from the server. Called on panel open (openSettings) — same
+ * fire-and-forget shape as loadAppearance()/loadPhoneAccess(). A failed GET renders a plain
+ * "unavailable" line rather than throwing, so a client running against an older backend still opens.
+ */
+export async function loadKnowledgePacks() {
+  const list = document.getElementById('knowledge-packs-list');
+  const status = document.getElementById('knowledge-packs-status');
+  const sel = document.getElementById('knowledge-preset');
+  const btn = document.getElementById('knowledge-packs-save-btn');
+  if (!list) return;
+  list.textContent = T('settings.loading', 'Loading…');
+  if (status) status.textContent = '';
+  try {
+    const r = await fetch('/knowledge/packs');
+    const d = await r.json().catch(function () { return {}; });
+    if (!r.ok || !d || !d.ok || !Array.isArray(d.packs)) {
+      list.textContent = T('settings.knowledge.unavailable', 'Knowledge packs unavailable');
+      if (btn) btn.disabled = true;
+      return;
+    }
+    _knowledgePresets = d.presets || {};
+    if (btn) btn.disabled = false;
+    // Preset dropdown: one option per named preset the server offers, plus an explicit Custom for a
+    // hand-picked set. Selecting the current preset (d.preset) if the server reported one, else Custom.
+    if (sel) {
+      const cur = d.preset || '';
+      let opts = Object.keys(_knowledgePresets).map(function (name) {
+        return '<option value="' + escapeHtml(name) + '"' + (name === cur ? ' selected' : '') + '>' + escapeHtml(humanizeKey(name)) + '</option>';
+      }).join('');
+      opts += '<option value="custom"' + (cur ? '' : ' selected') + '>' + escapeHtml(T('settings.knowledge.custom', 'Custom')) + '</option>';
+      sel.innerHTML = opts;
+    }
+    // One labelled checkbox row per pack: bold title (+ "(always on)" for core), a one-line summary,
+    // and a muted size · doc-count line. Checked = enabled; core is checked and disabled.
+    list.innerHTML = d.packs.map(function (p) {
+      const cid = 'kpack_' + String(p.id).replace(/[^a-zA-Z0-9_]/g, '_');
+      const isCore = p.id === 'core';
+      const checked = (isCore || p.enabled) ? 'checked' : '';
+      const disabled = isCore ? 'disabled' : '';
+      const meta = escapeHtml(_fmtBytes(p.approx_bytes)) + ' · ' +
+        escapeHtml(T('settings.knowledge.doc_count', '{n} docs', { n: (p.doc_count || 0) }));
+      return '<div class="settings-row settings-section" style="border-left:3px solid var(--asp);padding-left:8px">' +
+        '<label for="' + cid + '" style="display:flex;align-items:flex-start;gap:8px;font-size:0.8rem;text-transform:none;color:var(--text);font-weight:600">' +
+        '<input type="checkbox" id="' + cid + '" data-pack="' + escapeHtml(String(p.id)) + '" data-on-change="onKnowledgePackToggle" ' + checked + ' ' + disabled + '/>' +
+        '<span>' + escapeHtml(p.title || p.id) +
+        (isCore ? ' <span class="hint" style="font-weight:400">' + escapeHtml(T('settings.knowledge.always_on', '(always on)')) + '</span>' : '') +
+        '</span></label>' +
+        '<div class="hint" style="margin-left:24px">' + escapeHtml(p.summary || '') + '</div>' +
+        '<div class="hint" style="margin-left:24px;color:var(--text-faint)">' + meta + '</div>' +
+        '</div>';
+    }).join('');
+    if (status) status.textContent = _fmtChunks(d.indexed_chunks);
+  } catch (_e) {
+    list.textContent = T('settings.knowledge.unavailable', 'Knowledge packs unavailable');
+    if (btn) btn.disabled = true;
+  }
+}
+try { window.loadKnowledgePacks = loadKnowledgePacks; } catch (_e) { /* no-op */ }
+
+/** Picking a preset checks exactly its packs (core stays on). 'custom' leaves the boxes as-is. */
+export function onKnowledgePresetSelect(name) {
+  if (!name || name === 'custom') return;
+  const packs = _knowledgePresets[name] || [];
+  document.querySelectorAll('#knowledge-packs-list input[type="checkbox"][data-pack]').forEach(function (cb) {
+    const pid = cb.getAttribute('data-pack');
+    if (pid === 'core') { cb.checked = true; return; }   // locked on regardless of the preset
+    cb.checked = packs.indexOf(pid) !== -1;
+  });
+}
+try { window.onKnowledgePresetSelect = onKnowledgePresetSelect; } catch (_e) { /* no-op */ }
+
+/** Editing a checkbox by hand means the set no longer matches a named preset → show Custom. */
+export function onKnowledgePackToggle() {
+  const sel = document.getElementById('knowledge-preset');
+  if (sel) sel.value = 'custom';   // programmatic .value does not fire change → no recursion
+}
+try { window.onKnowledgePackToggle = onKnowledgePackToggle; } catch (_e) { /* no-op */ }
+
+/**
+ * POST the selected packs, then reflect what the SERVER says is enabled + the fresh chunk count.
+ * The button is disabled for the round-trip (re-indexing can take a moment), showing "Re-indexing…"
+ * then "Saved — N chunks indexed". Same honesty rule as the rest of this file: render the effective
+ * enabled set the server returns, not the boxes we posted.
+ */
+export async function saveKnowledgePacks() {
+  const btn = document.getElementById('knowledge-packs-save-btn');
+  const msg = document.getElementById('knowledge-packs-save-msg');
+  const status = document.getElementById('knowledge-packs-status');
+  const packs = _selectedKnowledgePacks();
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = T('settings.knowledge.reindexing', 'Re-indexing…');
+  try {
+    const r = await fetch('/knowledge/packs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packs: packs }),
+    });
+    const d = await r.json().catch(function () { return {}; });
+    if (!r.ok || !d || !d.ok) {
+      if (msg) msg.textContent = T('settings.save_failed_reason', 'Save failed: {why}', { why: ((d && d.error) || ('HTTP ' + r.status)) });
+      return;
+    }
+    // The server's effective enabled set wins over the click, and core is always on.
+    const enabled = Array.isArray(d.enabled) ? d.enabled : packs;
+    document.querySelectorAll('#knowledge-packs-list input[type="checkbox"][data-pack]').forEach(function (cb) {
+      const pid = cb.getAttribute('data-pack');
+      cb.checked = pid === 'core' || enabled.indexOf(pid) !== -1;
+    });
+    if (status) status.textContent = _fmtChunks(d.indexed_chunks);
+    if (msg) msg.textContent = T('settings.knowledge.saved', 'Saved — {n} chunks indexed', { n: (Number(d.indexed_chunks) || 0).toLocaleString() });
+    showToast(T('settings.knowledge.saved_toast', 'Knowledge packs saved'));
+  } catch (_e) {
+    if (msg) msg.textContent = T('settings.save_failed', 'Save failed');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+try { window.saveKnowledgePacks = saveKnowledgePacks; } catch (_e) { /* no-op */ }
 
 export async function runKnowledgeIngest() {
   // #km-source / #km-ingest-list — NOT #ingest-path / #ingest-msg, which exist nowhere. This read null,
