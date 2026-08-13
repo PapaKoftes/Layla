@@ -780,6 +780,9 @@ def load_config() -> dict:
             "knowledge_sources": [],
             "knowledge_max_bytes": 4000,
             "knowledge_chunks_k": 5,
+            "knowledge_min_similarity": 0.40,
+            "knowledge_preset": "",
+            "knowledge_packs": [],
             "learnings_n": 30,
             "semantic_k": 5,
             "memory_retrieval_min_adjusted_confidence": 0.0,
@@ -1352,8 +1355,9 @@ def load_knowledge_docs(max_bytes: int = 6000) -> str:
     _enabled = None
     _is_enabled = None
     try:
-        from layla.memory.knowledge_packs import is_doc_enabled as _is_enabled, resolve_enabled_packs
+        from layla.memory.knowledge_packs import is_doc_enabled, resolve_enabled_packs
         _enabled = resolve_enabled_packs(load_config())
+        _is_enabled = is_doc_enabled
     except Exception:
         _is_enabled = None
     collected = []
