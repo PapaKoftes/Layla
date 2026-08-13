@@ -23,7 +23,9 @@ param(
     [ValidateSet("auto", "gpu", "cpu")][string]$Accel = "auto",
     [switch]$SkipModel,
     [switch]$Verify,
-    [switch]$NoStart   # skip auto-launching Layla at the end (CI/automation)
+    [switch]$NoStart,  # skip auto-launching Layla at the end (CI/automation)
+    [string]$Extras = "__prompt__"  # comma list of optional extras (e.g. "voice,data"); "" = none;
+                                    # "__prompt__" (default) = ask interactively, or none when non-interactive
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot          # install\ -> repo root
@@ -135,13 +137,55 @@ uv pip install --python $VPy torch --index-url https://download.pytorch.org/whl/
 # the README advertises "can browse the web" and the tool then reported a missing library.
 # Pure-Python/small wheels, no compiler. (playwright still needs `playwright install chromium`
 # for real browser automation - see README.)
-uv pip install --python $VPy -e ".[cpu,llm,research,crawl]"
+# Optional add-ons. The base install below already covers chat, code, web research and browser tools.
+# -Extras controls the rest: a comma list (e.g. "voice,data"), "" for none, or "__prompt__" (the default)
+# to ASK. Non-interactive shells (CI, the packaged .exe, piped stdin, -NoStart) NEVER prompt - they take
+# -Extras verbatim and default to none, so automated installs stay deterministic.
+$OptionalAddons = [ordered]@{
+    "voice"    = "Speak and listen - speech-to-text + text-to-speech (~200 MB)"
+    "vision"   = "See images - OCR + captioning (~1.5 GB)"
+    "data"     = "Data and ML - CSV/Excel analysis, charts, scikit-learn (~125 MB)"
+    "docs"     = "Read Word / Excel documents"
+    "viz"      = "Plot charts (matplotlib)"
+    "nlp"      = "Entity extraction, keywords, translation"
+    "security" = "Deeper code security scanning (semgrep; non-Windows)"
+}
+$ChosenExtras = @()
+$AddonKeys = @($OptionalAddons.Keys)
+if ($Extras -eq "__prompt__") {
+    $interactive = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) -and (-not $NoStart)
+    if ($interactive) {
+        Write-Host ""
+        Write-Host "  Optional add-ons (base install already covers chat, code, web research and browser):"
+        $i = 0
+        foreach ($k in $AddonKeys) { $i++; Write-Host ("    [{0}] {1,-9} {2}" -f $i, $k, $OptionalAddons[$k]) }
+        Write-Host ""
+        $raw = (([string](Read-Host "  Add which? comma numbers (e.g. 1,3), 'all', or Enter for none")).Trim().ToLower())
+        if ($raw -eq "all") {
+            $ChosenExtras = $AddonKeys
+        } elseif ($raw -ne "") {
+            foreach ($tok in ($raw -split "[,\s]+")) {
+                if ($tok -match '^\d+$') { $n = [int]$tok; if ($n -ge 1 -and $n -le $AddonKeys.Count) { $ChosenExtras += $AddonKeys[$n - 1] } }
+                elseif ($OptionalAddons.Contains($tok)) { $ChosenExtras += $tok }
+            }
+        }
+    }
+} elseif ($Extras.Trim() -ne "") {
+    foreach ($tok in ($Extras -split "[,\s]+")) {
+        $t = $tok.Trim().ToLower()
+        if ($t -ne "" -and $OptionalAddons.Contains($t)) { $ChosenExtras += $t }
+    }
+}
+$ChosenExtras = @($ChosenExtras | Select-Object -Unique)
+$ExtraSpec = if ($ChosenExtras.Count) { "," + ($ChosenExtras -join ",") } else { "" }
+if ($ChosenExtras.Count) { Write-Host ("==> Adding optional add-ons: {0}" -f ($ChosenExtras -join ", ")) -ForegroundColor Cyan }
+uv pip install --python $VPy -e ".[cpu,llm,research,crawl$ExtraSpec]"
 
 # 4b) Playwright browser binary. The `crawl` extra installs the playwright PACKAGE but not the
 # Chromium it drives, so browser tools would fail on first use with "install chromium". Fetch it now
 # while we know we're online. Non-fatal: browser automation is optional; if this fails the browser
 # tools stay unavailable and everything else still works. Run BARE (no 2>&1/|Out-Null) and inside
-# try/catch — under PowerShell 5.1 + ErrorActionPreference=Stop, redirecting a native command's
+# try/catch - under PowerShell 5.1 + ErrorActionPreference=Stop, redirecting a native command's
 # stderr aborts the whole script (the same trap that broke the CUDA step).
 try {
     Write-Host "==> Installing Playwright Chromium (browser automation) ..."

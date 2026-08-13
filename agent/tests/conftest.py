@@ -268,10 +268,24 @@ def isolated_db(tmp_path):
             db_mod._MIGRATED = False  # type: ignore[attr-defined]
         if hasattr(mig, "_MIGRATED"):
             mig._MIGRATED = False  # type: ignore[attr-defined]
+        # Drop any thread-local connection a PRIOR test (or a background daemon) left open, so
+        # migrate() and everything in this test share ONE fresh connection to the freshly-patched
+        # isolated DB. Without this, a leaked connection can outlive its tmp DB and a write can land
+        # on a path with no schema → intermittent "no such table: learnings" under some orderings.
+        try:
+            from layla.memory.db_connection import close_thread_connection as _cc
+            _cc()
+        except Exception:
+            pass
         migrate()
         try:
             yield db_path
         finally:
+            try:
+                from layla.memory.db_connection import close_thread_connection as _cc2
+                _cc2()
+            except Exception:
+                pass
             # Reset the migrate() guards on TEARDOWN too — migrate() set them True against the tmp DB,
             # so without this the NEXT test that touches the REAL DB finds _MIGRATED=True, skips its
             # migration, and can hit a half-migrated/empty schema (500 instead of the expected result).
