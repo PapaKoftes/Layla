@@ -59,6 +59,9 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "use_chroma", "type": "boolean", "category": "memory", "default": True, "hint": "Use ChromaDB for semantic search and learnings."},
     {"key": "embedder_prefer_quality", "type": "boolean", "category": "memory", "default": False, "hint": "Prefer heavier sentence-transformers embeddings over fast model2vec static embeddings (needs torch; better quality, slower on low-end)."},
     {"key": "knowledge_chunks_k", "type": "number", "category": "memory", "default": 5, "min": 1, "max": 20, "hint": "Chunks retrieved from knowledge base."},
+    {"key": "knowledge_min_similarity", "type": "number", "category": "memory", "default": 0.40, "min": 0.0, "max": 1.0, "hint": "Relevance floor for knowledge retrieval (cosine sim). Higher = stricter/less noise; lower = more recall."},
+    {"key": "knowledge_preset", "type": "string", "category": "memory", "default": "", "hint": "Knowledge pack bundle: companion | maker | engineer | researcher | everything. Empty = all packs. See docs/design/KNOWLEDGE_PRESETS.md."},
+    {"key": "knowledge_packs", "type": "list", "category": "memory", "default": [], "hint": "Explicit list of enabled knowledge pack ids (overrides knowledge_preset). Empty = all. 'core' is always on."},
     {"key": "learnings_n", "type": "number", "category": "memory", "default": 30, "min": 5, "max": 100, "hint": "Learnings injected into context."},
     {"key": "semantic_k", "type": "number", "category": "memory", "default": 5, "min": 1, "max": 20, "hint": "Semantic search results."},
     {
@@ -410,6 +413,13 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "category": "safety",
         "default": False,
         "hint": "DANGEROUS: auto-approve tools with no prompt and no checkpoint. GUARDED: while safe_mode is on (the default), this still does NOT skip approval for destructive tools (writes, shell, run_python, git, …) — to fully auto-approve those you must also turn safe_mode off. Ignored entirely when remote_enabled is on. Off by default; leave off unless you know what you're doing.",
+    },
+    {
+        "key": "auto_approve_tools",
+        "type": "list",
+        "category": "safety",
+        "default": [],
+        "hint": "Customizable safety: auto-approve ONLY these specific tools by name (e.g. browser_click, clipboard_read) without a prompt — so Layla stops asking for the ones you trust while still asking for the rest. Subject to the SAME floors as tool_approval_bypass: safe_mode still gates destructive tools (writes/shell/run_python/git) and it is ignored while remote_enabled is on. The hard shell blocklist (rm/dd/format/…) always applies.",
     },
     # ── Integrations (Discord, Slack, etc.) ──
     {

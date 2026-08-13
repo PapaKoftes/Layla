@@ -1494,6 +1494,74 @@
       </div>
       <div id="phone-access-status" class="hint" style="margin-top:6px"></div>
     </div>
+    <!-- Knowledge packs (v1.7.5): domain knowledge Layla indexes for retrieval. The preset dropdown
+         and pack rows are populated by loadKnowledgePacks() in settings-full.js when the panel opens;
+         Save POSTs the selection to /knowledge/packs and re-indexes. `core` is always on (locked). -->
+    <div class="settings-knowledge-packs" id="settings-knowledge-packs" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
+      <div class="hint" style="margin-bottom:6px"><strong data-i18n="settings.knowledge.heading">Knowledge packs</strong> — domain knowledge Layla indexes for retrieval. Pick a preset or toggle packs individually.</div>
+      <label for="knowledge-preset" style="display:block;margin:4px 0;font-size:0.75rem" data-i18n="settings.knowledge.preset_label">Preset
+        <select id="knowledge-preset" class="settings-select" data-on-change="onKnowledgePresetSelect" data-pass-value style="display:block;width:100%;max-width:220px;margin-top:4px"></select>
+      </label>
+      <div id="knowledge-packs-list" style="margin-top:8px;font-size:0.72rem">Loading…</div>
+      <div id="knowledge-packs-status" class="hint" role="status" aria-live="polite" style="margin-top:6px"></div>
+      <div style="margin-top:6px">
+        <button type="button" id="knowledge-packs-save-btn" class="settings-save" data-action="saveKnowledgePacks" data-i18n="settings.knowledge.save">Save knowledge packs</button>
+        <span id="knowledge-packs-save-msg" class="hint" role="status" aria-live="polite" style="margin-left:8px"></span>
+      </div>
+    </div>
+    <!-- Approvals & safety (knowledge-presets-1.7.5): a Claude-Code-style permission control mapping
+         to tool_approval_bypass / safe_mode / auto_approve_tools. The mode selector picks a preset
+         combo; safe_mode is a HARD FLOOR that keeps destructive tools behind approval even when a
+         bypass is on. Populated by loadApprovalsSafety() in settings-full.js when the panel opens;
+         Apply POSTs the chosen mode's key combo to /settings (all three keys are remote-protected). -->
+    <div class="settings-approvals" id="approvals-safety" style="margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:8px">
+      <div class="hint" style="margin-bottom:6px"><strong data-i18n="settings.approvals.heading">Approvals &amp; safety</strong> — how often Layla asks before running a tool. <code>safe_mode</code> is a hard floor: destructive tools (file writes, shell, code, git, sends) always ask.</div>
+      <fieldset style="border:0;margin:0;padding:0;min-width:0">
+        <legend class="hint" style="margin-bottom:4px;padding:0" data-i18n="settings.approvals.mode_legend">Approval mode</legend>
+
+        <label class="option-row" style="align-items:flex-start;gap:8px" for="approval-mode-ask">
+          <input type="radio" name="approval-mode" id="approval-mode-ask" value="ask" data-on-change="onApprovalModeChange" data-pass-value checked />
+          <span><strong data-i18n="settings.approvals.mode_ask">Ask every time</strong> <span class="hint" data-i18n="settings.approvals.ask_desc">(default) — approve each tool call.</span></span>
+        </label>
+
+        <label class="option-row" style="align-items:flex-start;gap:8px" for="approval-mode-trusted">
+          <input type="radio" name="approval-mode" id="approval-mode-trusted" value="trusted" data-on-change="onApprovalModeChange" data-pass-value />
+          <span><strong data-i18n="settings.approvals.mode_trusted">Auto-approve trusted tools</strong> <span class="hint" data-i18n="settings.approvals.trusted_desc">— skip the prompt for the safe tools you pick below (destructive tools still ask).</span></span>
+        </label>
+        <div id="approval-trusted-tools" hidden style="margin:2px 0 8px 26px">
+          <div class="hint" style="margin-bottom:4px" data-i18n="settings.approvals.trusted_list_hint">Auto-approve only these privacy/interaction tools — none write files, run code, or send messages:</div>
+          <label class="option-row" style="gap:8px" for="approve_tool_browser_click"><input type="checkbox" id="approve_tool_browser_click" data-tool="browser_click" /> <code>browser_click</code></label>
+          <label class="option-row" style="gap:8px" for="approve_tool_browser_fill"><input type="checkbox" id="approve_tool_browser_fill" data-tool="browser_fill" /> <code>browser_fill</code></label>
+          <label class="option-row" style="gap:8px" for="approve_tool_clipboard_read"><input type="checkbox" id="approve_tool_clipboard_read" data-tool="clipboard_read" /> <code>clipboard_read</code></label>
+          <label class="option-row" style="gap:8px" for="approve_tool_clipboard_write"><input type="checkbox" id="approve_tool_clipboard_write" data-tool="clipboard_write" /> <code>clipboard_write</code></label>
+          <label class="option-row" style="gap:8px" for="approve_tool_screenshot_desktop"><input type="checkbox" id="approve_tool_screenshot_desktop" data-tool="screenshot_desktop" /> <code>screenshot_desktop</code></label>
+        </div>
+
+        <label class="option-row" style="align-items:flex-start;gap:8px" for="approval-mode-guarded">
+          <input type="radio" name="approval-mode" id="approval-mode-guarded" value="guarded" data-on-change="onApprovalModeChange" data-pass-value />
+          <span><strong data-i18n="settings.approvals.mode_guarded">Auto-approve everything (guarded)</strong> <span class="hint" data-i18n="settings.approvals.guarded_desc">— no prompts for ordinary tools.</span></span>
+        </label>
+        <div id="approval-guarded-note" hidden class="hint" role="note" style="margin:2px 0 8px 26px" data-i18n="settings.approvals.guarded_note">Destructive tools (file writes, shell, code, git, sends) still ask — safe_mode is on.</div>
+
+        <label class="option-row" style="align-items:flex-start;gap:8px" for="approval-mode-full">
+          <input type="radio" name="approval-mode" id="approval-mode-full" value="full" data-on-change="onApprovalModeChange" data-pass-value />
+          <span><strong data-i18n="settings.approvals.mode_full">Full auto — I accept the risk</strong> <span class="hint" data-i18n="settings.approvals.full_desc">— safe_mode off.</span></span>
+        </label>
+        <div id="approval-full-note" hidden role="alert" style="margin:2px 0 8px 26px;padding:6px 8px;border-left:3px solid var(--danger);color:var(--danger);font-size:0.72rem;line-height:1.45">
+          <strong data-i18n="settings.approvals.full_warn_title">⚠ Destructive tools will run unsupervised.</strong>
+          <span data-i18n="settings.approvals.full_warn_body">File writes, shell, code, git and sends execute with no prompt. The hard shell blocklist (rm/dd/format/…) still always applies, and auto-approve is ignored while the server is remotely exposed.</span>
+        </div>
+
+        <label class="option-row" style="align-items:flex-start;gap:8px" for="approval-mode-custom">
+          <input type="radio" name="approval-mode" id="approval-mode-custom" value="custom" disabled />
+          <span><strong data-i18n="settings.approvals.mode_custom">Custom (current config)</strong> <span class="hint" data-i18n="settings.approvals.custom_desc">— your saved keys don't match a preset. Pick a mode above to apply one.</span></span>
+        </label>
+      </fieldset>
+      <div style="margin-top:6px">
+        <button type="button" id="approvals-save-btn" class="settings-save" data-action="saveApprovalsSafety" data-i18n="settings.approvals.save">Apply approval mode</button>
+        <span id="approvals-save-msg" class="hint" role="status" aria-live="polite" style="margin-left:8px"></span>
+      </div>
+    </div>
     <div class="settings-btns">
       <button class="settings-save" data-action="saveSettings">Save Settings</button>
       <button class="settings-close" data-action="closeSettings" data-i18n="action.close">Close</button>

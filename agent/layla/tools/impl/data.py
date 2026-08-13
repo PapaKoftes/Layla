@@ -544,3 +544,76 @@ def db_backup(db_path: str, backup_path: str = "") -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+def ml_analyze(path: str, task: str = "cluster", target_column: str = "", n_clusters: int = 3) -> dict:
+    """Basic machine-learning analysis of a CSV with scikit-learn.
+
+    task:
+      - 'cluster'  : KMeans over the numeric columns into n_clusters groups; returns cluster
+                     sizes and per-cluster feature means.
+      - 'classify' : train/test a RandomForest predicting target_column; returns test accuracy
+                     and the top feature importances.
+      - 'regress'  : fit a linear regression predicting target_column; returns test R^2 and the
+                     largest coefficients.
+    Only numeric feature columns are used (non-numeric are dropped). scikit-learn + pandas are
+    optional (the [data] extra) — if absent this returns ok:False with install guidance rather
+    than a fake result. This is a quick first look, not a substitute for a real modelling pass.
+    """
+    target = Path(path)
+    if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
+        target = (Path(_effective_sandbox.path) / path).resolve()
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.is_file():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import pandas as pd  # optional ([data] extra)
+        from sklearn.cluster import KMeans
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.linear_model import LinearRegression
+        from sklearn.metrics import accuracy_score, r2_score
+        from sklearn.model_selection import train_test_split
+    except ImportError:
+        return {"ok": False, "error": "scikit-learn/pandas not installed: install the [data] extra"}
+    try:
+        df = pd.read_csv(target)
+        num = df.select_dtypes(include="number")
+        if task == "cluster":
+            k = max(2, int(n_clusters))
+            if num.shape[1] < 1 or len(num) < k:
+                return {"ok": False, "error": "not enough numeric rows/columns to cluster"}
+            km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(num.fillna(0))
+            labels = km.labels_
+            sizes = {int(c): int((labels == c).sum()) for c in range(k)}
+            means = {
+                f"cluster_{i}": {c: round(float(v), 3) for c, v in zip(num.columns, ctr)}
+                for i, ctr in enumerate(km.cluster_centers_)
+            }
+            return {"ok": True, "task": "cluster", "n_clusters": k, "cluster_sizes": sizes, "cluster_feature_means": means}
+        if task not in ("classify", "regress"):
+            return {"ok": False, "error": f"unknown task '{task}' (use cluster|classify|regress)"}
+        if not target_column or target_column not in df.columns:
+            return {"ok": False, "error": f"task '{task}' needs a valid target_column"}
+        X = num.drop(columns=[target_column], errors="ignore").fillna(0)
+        if X.shape[1] < 1:
+            return {"ok": False, "error": "no numeric feature columns to learn from"}
+        y = df[target_column]
+        x_tr, x_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, random_state=0)
+        if task == "classify":
+            clf = RandomForestClassifier(n_estimators=100, random_state=0).fit(x_tr, y_tr)
+            acc = accuracy_score(y_te, clf.predict(x_te))
+            imp = sorted(zip(X.columns, clf.feature_importances_), key=lambda t: -t[1])[:10]
+            return {
+                "ok": True, "task": "classify", "target": target_column, "accuracy": round(float(acc), 4),
+                "top_features": [{"feature": f, "importance": round(float(i), 4)} for f, i in imp],
+            }
+        reg = LinearRegression().fit(x_tr, y_tr)
+        r2 = r2_score(y_te, reg.predict(x_te))
+        coefs = sorted(zip(X.columns, reg.coef_), key=lambda t: -abs(float(t[1])))[:10]
+        return {
+            "ok": True, "task": "regress", "target": target_column, "r2": round(float(r2), 4),
+            "coefficients": [{"feature": f, "coef": round(float(c), 4)} for f, c in coefs],
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"ml_analyze failed: {e}"}
+

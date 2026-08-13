@@ -182,6 +182,15 @@ def _record_embedder_failure(err: Exception) -> None:
     )
 
 
+def embedder_is_loaded() -> bool:
+    """True once an embedder has been successfully loaded (cheap, no network, no load attempt).
+
+    The prompt builder uses this to gate the knowledge-RAG path: it only retrieves when the embedder is
+    ALREADY warm, so a cold first turn degrades to the static reference docs instead of blocking on a
+    multi-hundred-MB model load. The embedder is warmed out-of-band by the app's startup warmup thread."""
+    return _embedder is not None
+
+
 def embedder_status() -> dict[str, Any]:
     """Observed embedder state, for /health/deps. Never loads anything and never touches the network.
 
@@ -1260,7 +1269,11 @@ def _read_pdf_text(path: Path) -> str:
 
 
 def index_knowledge_docs(knowledge_dir: Path) -> None:
-    """Chunk and index all .md, .txt, and .pdf under knowledge_dir into Chroma 'knowledge' collection. No-op if not use_chroma.
+    """Chunk and index all .md, .txt, and .pdf under knowledge_dir into the 'knowledge' collection.
+
+    Works with OR without chromadb: when chromadb is absent it indexes into the compiler-free
+    SQLite+NumPy fallback store (verified: full knowledge base becomes semantically searchable on a
+    default install). Only truly no-op if vector memory is disabled (LAYLA_CHROMA_DISABLED=1).
     Supports optional front matter: ---\\npriority: core|support|flavor\\ndomain: coding|personality|research\\n---
     If missing, priority=support. Excludes paths containing .identity (Lilith-only).
     Incremental: avoids duplication and preserves unchanged embeddings via content_hash."""
@@ -1296,10 +1309,26 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
         except Exception as _exc:
             logger.debug("vector_store:L653: %s", _exc, exc_info=False)
 
+        # Preset scoping (v1.7.5): only index docs from enabled packs. Disabled-pack chunks then
+        # fall out of new_ids and are pruned below, so toggling a pack off actually removes it from
+        # search. Default (nothing configured) -> _enabled is None -> index everything.
+        _enabled = None
+        _is_enabled = None
+        try:
+            import runtime_safety as _rs
+
+            from .knowledge_packs import is_doc_enabled, resolve_enabled_packs
+
+            _enabled = resolve_enabled_packs(_rs.load_config())
+            _is_enabled = is_doc_enabled
+        except Exception:
+            _is_enabled = None
         chunks: list[tuple[str, str, dict]] = []
         for ext in ("*.md", "*.txt", "*.pdf"):
             for f in sorted(knowledge_dir.rglob(ext)):
                 if ".identity" in str(f):
+                    continue
+                if _is_enabled is not None and not _is_enabled(f, _enabled):
                     continue
                 try:
                     if f.suffix.lower() == ".pdf":
@@ -1555,8 +1584,9 @@ def get_knowledge_chunks_with_sources(
     aspect_id: str = "",
     project_domains: list[str] | None = None,
 ) -> list[dict]:
-    """Return up to k chunks with text and source for RAG citation. [] if not use_chroma.
-    Each item: {"text": str, "source": str} (source from metadata, e.g. path relative to knowledge_dir)."""
+    """Return up to k chunks with text and source for RAG citation (Chroma or fallback store).
+    Applies a relevance floor (knowledge_min_similarity, default 0.40) so only on-topic chunks return.
+    [] if vector memory is disabled. Each item: {"text": str, "source": str} (source = path rel to knowledge/)."""
     if not _vector_enabled():
         return []
     try:
@@ -1580,10 +1610,13 @@ def get_knowledge_chunks_with_sources(
         asp = (aspect_id or "").strip().lower()
         dom_hints = [d.strip().lower() for d in (project_domains or []) if str(d).strip()]
         dom_boost = 1.15
+        min_sim = 0.40  # relevance floor: below this a chunk is noise, not knowledge (measured on model2vec)
         try:
             import runtime_safety
 
-            dom_boost = float(runtime_safety.load_config().get("knowledge_retrieval_domain_boost", 1.15))
+            _cfg = runtime_safety.load_config()
+            dom_boost = float(_cfg.get("knowledge_retrieval_domain_boost", 1.15))
+            min_sim = float(_cfg.get("knowledge_min_similarity", 0.40))
         except Exception:
             pass
         combined = []
@@ -1591,6 +1624,10 @@ def get_knowledge_chunks_with_sources(
             meta = metas[i] if i < len(metas) else {}
             dist = float(dists[i]) if i < len(dists) and dists[i] is not None else None
             sim = (1.0 - dist) if (dist is not None) else (1.0 / (1.0 + i))
+            # Relevance gate: with a real cosine distance, drop chunks below the floor so
+            # broadening WHEN we retrieve never injects off-topic docs into the prompt.
+            if dist is not None and sim < min_sim:
+                continue
             pr = _PRIORITY_ORDER.get((str(meta.get("priority") or "support")).lower(), 1) if isinstance(meta, dict) else 1
             score = sim - (0.03 * pr)
             if asp and isinstance(meta, dict):

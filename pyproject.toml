@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "layla"
-version = "1.7.0"
+version = "1.7.5"
 description = "A local-first, multi-aspect AI companion and engineering agent"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -130,6 +130,7 @@ research = [
     "arxiv>=2.1",
     "pandas>=2.0,<3",
     "nbformat>=5.10",
+    "jedi>=0.19",                    # semantic code navigation (jump-to-definition) for the code_definition tool (MIT, pure-python)
 ]
 obsidian = [
     "python-frontmatter>=1.1",       # lossless YAML-frontmatter round-trip for two-way vault sync (MIT)
@@ -162,6 +163,7 @@ nlp = [
 ]
 security = [
     "bandit>=1.7",
+    "semgrep>=1.60; platform_system != 'Windows'",   # deeper multi-language static analysis (security_scan scan_type=semgrep); optional, skipped on Windows where semgrep has no wheels
 ]
 tui = [
     "textual>=0.40",

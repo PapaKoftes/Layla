@@ -414,16 +414,28 @@ def enrich_deliberation_context(context: str) -> str:
 
 
 def needs_knowledge_rag(goal: str) -> bool:
-    """True if goal suggests research/search/explain or reflective/psychology-informed chat — use full Chroma retrieval."""
-    if not (goal or "").strip():
+    """True when a turn should consult the knowledge base (domain packs + reference docs).
+
+    Fires for research/reflective phrasing AND for any substantive question or task. The
+    retrieval layer applies a relevance floor (``knowledge_min_similarity``), so casting a
+    wide net here never injects off-topic docs — a chit-chat turn simply retrieves nothing.
+    This is what lets a maker's practical question ("what feeds for MDF?", "which bit for
+    aluminium?") actually reach the fabrication/embedded knowledge, not just "research …"
+    queries. Only clearly phatic/trivial turns are skipped.
+    """
+    g = (goal or "").strip().lower()
+    if not g:
         return False
-    g = goal.lower()
-    research_kw = (
-        "research", "search", "explain", "look up", "what is",
-        "how does", "find out", "learn about",
-    )
-    if any(kw in g for kw in research_kw):
-        return True
+    # Phatic / social turns are never worth a knowledge lookup.
+    _stripped = g.rstrip("!?.,")
+    _phatic = {
+        "hi", "hello", "hey", "yo", "sup", "thanks", "thank you", "ty", "ok", "okay", "k",
+        "yes", "no", "yep", "nope", "sure", "cool", "nice", "great", "lol", "haha",
+        "good morning", "good night", "goodnight", "how are you", "what's up", "whats up",
+        "hey there", "hi there", "morning", "gm", "gn",
+    }
+    if _stripped in _phatic or len(_stripped) <= 2:
+        return False
     reflective_kw = (
         "reflect on", "self-reflect", "help me reflect", "overwhelmed",
         " i feel", "i'm feeling", "im feeling", "feeling stuck",
@@ -435,7 +447,18 @@ def needs_knowledge_rag(goal: str) -> bool:
         "mental health", "talk to a therapist", "panic attack",
         "depressed about", "anxious about",
     )
-    return any(kw in g for kw in reflective_kw)
+    if any(kw in g for kw in reflective_kw):
+        return True
+    # Any substantive question or task: retrieve. The relevance floor keeps it clean.
+    if "?" in g or len(g.split()) >= 4:
+        return True
+    _task_starts = (
+        "how ", "what ", "which ", "why ", "when ", "where ", "who ", "should ", "can ",
+        "do ", "does ", "is ", "are ", "build", "design", "make ", "fix", "help", "write",
+        "compare", "recommend", "suggest", "calculate", "convert", "plan ", "explain",
+        "research", "search", "look up", "find", "learn ",
+    )
+    return any(g.startswith(s) for s in _task_starts)
 
 
 def needs_graph(goal: str) -> bool:
@@ -689,32 +712,43 @@ def _resolve_knowledge_block(cfg: dict, goal: str, aspect: "dict | None", state:
     # Lazy: full Chroma knowledge RAG only when research/search/explain keywords
     if not _skip_expensive and cfg.get("use_chroma") and goal and needs_knowledge_rag(goal):
         try:
-            from layla.memory.vector_store import get_knowledge_chunks_with_sources, refresh_knowledge_if_changed
-            try:
-                refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
-            except Exception as _e:
-                logger.debug("context[knowledge_refresh] failed: %s", _e)
+            from layla.memory.vector_store import (
+                embedder_is_loaded,
+                get_knowledge_chunks_with_sources,
+                refresh_knowledge_if_changed,
+            )
             k = max(1, min(20, int(cfg.get("knowledge_chunks_k", 5))))
-            _proj_domains: list[str] = []
-            try:
-                from layla.memory.db import get_project_context
-                _pc = get_project_context() or {}
-                _proj_domains = [str(d) for d in (_pc.get("domains") or []) if d]
-            except Exception as _pde:
-                logger.debug("context[project_domains_knowledge] failed: %s", _pde)
-            try:
-                from layla.memory.vector_store import get_knowledge_chunks_with_parent
-                chunks_with_sources = get_knowledge_chunks_with_parent(
-                    goal, k=k,
-                    aspect_id=(aspect.get("id") or "") if isinstance(aspect, dict) else "",
-                    project_domains=_proj_domains or None,
-                )
-            except Exception:
-                chunks_with_sources = get_knowledge_chunks_with_sources(
-                    goal, k=k,
-                    aspect_id=(aspect.get("id") or "") if isinstance(aspect, dict) else "",
-                    project_domains=_proj_domains or None,
-                )
+            # Only do semantic RAG when the embedder is ALREADY warm. A cold embedder's first touch is a
+            # big model load/download; doing it here would either freeze the turn (blocking load) or, if
+            # pushed to a background thread, risk a native SIGABRT when the interpreter tears down while
+            # torch is still initialising off the main thread. The app warms the embedder at startup (a
+            # tracked, shutdown-joined thread); until it's warm we fall through to the static reference docs
+            # below, and RAG resumes automatically once it is. No blocking, no unmanaged threads.
+            if not embedder_is_loaded():
+                chunks_with_sources = []
+                logger.debug("context[knowledge_rag] embedder not warm yet; using static reference docs this turn")
+            else:
+                _proj_domains: list[str] = []
+                try:
+                    from layla.memory.db import get_project_context
+                    _pc = get_project_context() or {}
+                    _proj_domains = [str(d) for d in (_pc.get("domains") or []) if d]
+                except Exception as _pde:
+                    logger.debug("context[project_domains_knowledge] failed: %s", _pde)
+                try:
+                    refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
+                except Exception as _e:
+                    logger.debug("context[knowledge_refresh] failed: %s", _e)
+                _aid = (aspect.get("id") or "") if isinstance(aspect, dict) else ""
+                try:
+                    from layla.memory.vector_store import get_knowledge_chunks_with_parent
+                    chunks_with_sources = get_knowledge_chunks_with_parent(
+                        goal, k=k, aspect_id=_aid, project_domains=_proj_domains or None,
+                    )
+                except Exception:
+                    chunks_with_sources = get_knowledge_chunks_with_sources(
+                        goal, k=k, aspect_id=_aid, project_domains=_proj_domains or None,
+                    )
             if chunks_with_sources:
                 knowledge = "Reference docs (relevant to this turn):\n" + "\n\n".join(c.get("text", "") for c in chunks_with_sources[:k])
                 if state is not None:

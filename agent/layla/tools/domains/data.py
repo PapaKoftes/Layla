@@ -6,6 +6,11 @@ TOOLS = {
         "category": "data",
         "description": "Read a CSV file and return its contents as structured rows with headers.",
     },
+    "ml_analyze": {
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "data",
+        "description": "Machine-learning first-look on a CSV (scikit-learn): task=cluster (KMeans), classify (RandomForest + feature importances), or regress (linear + R^2). Numeric columns only.",
+    },
     "sql_query": {
         "dangerous": False, "require_approval": False, "risk_level": "low",
         "category": "data",

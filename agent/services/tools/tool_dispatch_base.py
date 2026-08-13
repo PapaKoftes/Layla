@@ -94,6 +94,15 @@ def _rebuild_goal(state: dict) -> str:
 
 _bypass_warned = set()  # tracks tools we've already warned about
 
+# Dangerous tools that are gated for PRIVACY / side-effect, not for destruction — pure capture or
+# on-page interaction (no file writes, no code execution, no outbound sends). Explicit per-tool trust
+# (auto_approve_tools) may auto-approve THESE even while safe_mode is on; every other dangerous tool
+# (writes / exec / git / sends) stays approval-gated. A NEW dangerous tool is destructive-by-default —
+# it must be added here to be granular-approvable under safe_mode. Fail safe, not fail open.
+_PRIVACY_GATED_ONLY = {
+    "clipboard_read", "clipboard_write", "screenshot_desktop", "browser_click", "browser_fill",
+}
+
 
 def _is_approval_bypassed(ctx: DispatchContext, tool_name: str) -> bool:
     """Check if tool approval should be bypassed.
@@ -104,7 +113,14 @@ def _is_approval_bypassed(ctx: DispatchContext, tool_name: str) -> bool:
 
     Returns True if the caller should *skip* the approval check.
     """
-    if not ctx.cfg.get("tool_approval_bypass", False):
+    # Per-tool granular auto-approve (customizable safety): the operator can trust SPECIFIC tools by
+    # name via `auto_approve_tools` — e.g. auto-approve browser_click + clipboard_read while STILL
+    # being asked for send_email — without flipping the global "yes to everything" tool_approval_bypass.
+    # It is deliberately subject to the exact same floors below (safe_mode still gates destructive
+    # tools; remote_enabled disables it), so granular trust can never punch through the hard floor.
+    _auto = ctx.cfg.get("auto_approve_tools") or []
+    _per_tool = isinstance(_auto, list) and tool_name in _auto
+    if not ctx.cfg.get("tool_approval_bypass", False) and not _per_tool:
         return False
     # safe_mode (default True) is a HARD FLOOR over the bypass for destructive tools. It was
     # advertised as "require approval for file writes and code execution" but was never actually read
@@ -117,7 +133,14 @@ def _is_approval_bypassed(ctx: DispatchContext, tool_name: str) -> bool:
             from runtime_safety import DANGEROUS_TOOLS as _DANGEROUS
         except Exception:
             _DANGEROUS = ()
-        if tool_name in _DANGEROUS:
+        # Coarse global bypass gates EVERY dangerous tool. Explicit per-tool trust gates only the
+        # destructive core (dangerous minus the privacy-only capture/interact tools) — so a named
+        # browser_click/clipboard tool may auto-approve, but a write/exec/send never does under safe_mode.
+        if _per_tool and not ctx.cfg.get("tool_approval_bypass", False):
+            _blocked = tool_name in _DANGEROUS and tool_name not in _PRIVACY_GATED_ONLY
+        else:
+            _blocked = tool_name in _DANGEROUS
+        if _blocked:
             if "__safe_mode_floor" not in _bypass_warned:
                 _bypass_warned.add("__safe_mode_floor")
                 logger.warning(

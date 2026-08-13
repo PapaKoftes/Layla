@@ -220,7 +220,7 @@ def retrieve_learnings(query: str, k: int = TOP_K, *, coding_boost: bool = False
 
 
 def retrieve_documents(query: str, k: int = TOP_K) -> list[dict]:
-    """BM25 / Chroma search over knowledge docs. Returns doc excerpts."""
+    """Chroma vector search over knowledge docs. Returns doc excerpts (empty list when use_chroma is disabled — there is no BM25 fallback on this path, unlike retrieve_learnings)."""
     results = []
     try:
         cfg = __import__("runtime_safety", fromlist=[None]).load_config()
