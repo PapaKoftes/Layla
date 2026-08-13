@@ -156,6 +156,14 @@ export async function openSettings() {
   // so the feature was a caller and two elements short of working. It is pure local computation
   // (location.* → a LAN URL), no fetch, so it cannot slow the panel down.
   loadPhoneAccess();
+  // v1.7.5 Knowledge packs. Fire-and-forget like the appearance/phone loaders above: it fetches
+  // /knowledge/packs and populates its own panel, degrading to "unavailable" if the API is absent,
+  // so it can never block or break the rest of the settings form from rendering.
+  loadKnowledgePacks();
+  // knowledge-presets-1.7.5 Approvals & safety. Same fire-and-forget shape as the loaders above:
+  // it GETs /settings, derives the approval mode from three keys and paints the selector, degrading
+  // to "leave the static markup as-is" if the read fails — so it can never block the rest of the form.
+  loadApprovalsSafety();
   const loadEl = document.getElementById('settings-loading');
   const formEl = document.getElementById('settings-form');
   if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = T('settings.loading', 'Loading…'); }
@@ -864,6 +872,310 @@ export async function saveAppearanceLite() {
     showToast(T('settings.save_failed', 'Save failed'));
   }
 }
+
+// ── Knowledge packs (v1.7.5) ─────────────────────────────────────────────────
+// Domain knowledge packs Layla indexes for retrieval. GET /knowledge/packs lists the packs, the
+// named presets, the current enabled preset and the indexed-chunk count; POST /knowledge/packs sets
+// the enabled set (an explicit list OR a named preset) and re-indexes. `core` is always on and its
+// checkbox is locked. The panel degrades to "Knowledge packs unavailable" if the API is not there —
+// the endpoint ships in parallel, so a client that predates it must not throw.
+let _knowledgePresets = {};
+
+/** approx_bytes → a short human size, e.g. 34816 → "34 KB". */
+function _fmtBytes(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return Math.round(b / 1024) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/** "1,240 chunks indexed" — thousands-separated so a five-figure corpus is readable at a glance. */
+function _fmtChunks(n) {
+  return T('settings.knowledge.chunks_indexed', '{n} chunks indexed', { n: (Number(n) || 0).toLocaleString() });
+}
+
+/** The ticked pack ids, `core` always included (it is locked on, so its box may be disabled). */
+function _selectedKnowledgePacks() {
+  const out = [];
+  document.querySelectorAll('#knowledge-packs-list input[type="checkbox"][data-pack]').forEach(function (cb) {
+    const pid = cb.getAttribute('data-pack');
+    if (cb.checked && out.indexOf(pid) === -1) out.push(pid);
+  });
+  if (out.indexOf('core') === -1) out.unshift('core');
+  return out;
+}
+
+/**
+ * Populate the Knowledge packs panel from the server. Called on panel open (openSettings) — same
+ * fire-and-forget shape as loadAppearance()/loadPhoneAccess(). A failed GET renders a plain
+ * "unavailable" line rather than throwing, so a client running against an older backend still opens.
+ */
+export async function loadKnowledgePacks() {
+  const list = document.getElementById('knowledge-packs-list');
+  const status = document.getElementById('knowledge-packs-status');
+  const sel = document.getElementById('knowledge-preset');
+  const btn = document.getElementById('knowledge-packs-save-btn');
+  if (!list) return;
+  list.textContent = T('settings.loading', 'Loading…');
+  if (status) status.textContent = '';
+  try {
+    const r = await fetch('/knowledge/packs');
+    const d = await r.json().catch(function () { return {}; });
+    if (!r.ok || !d || !d.ok || !Array.isArray(d.packs)) {
+      list.textContent = T('settings.knowledge.unavailable', 'Knowledge packs unavailable');
+      if (btn) btn.disabled = true;
+      return;
+    }
+    _knowledgePresets = d.presets || {};
+    if (btn) btn.disabled = false;
+    // Preset dropdown: one option per named preset the server offers, plus an explicit Custom for a
+    // hand-picked set. Selecting the current preset (d.preset) if the server reported one, else Custom.
+    if (sel) {
+      const cur = d.preset || '';
+      let opts = Object.keys(_knowledgePresets).map(function (name) {
+        return '<option value="' + escapeHtml(name) + '"' + (name === cur ? ' selected' : '') + '>' + escapeHtml(humanizeKey(name)) + '</option>';
+      }).join('');
+      opts += '<option value="custom"' + (cur ? '' : ' selected') + '>' + escapeHtml(T('settings.knowledge.custom', 'Custom')) + '</option>';
+      sel.innerHTML = opts;
+    }
+    // One labelled checkbox row per pack: bold title (+ "(always on)" for core), a one-line summary,
+    // and a muted size · doc-count line. Checked = enabled; core is checked and disabled.
+    list.innerHTML = d.packs.map(function (p) {
+      const cid = 'kpack_' + String(p.id).replace(/[^a-zA-Z0-9_]/g, '_');
+      const isCore = p.id === 'core';
+      const checked = (isCore || p.enabled) ? 'checked' : '';
+      const disabled = isCore ? 'disabled' : '';
+      const meta = escapeHtml(_fmtBytes(p.approx_bytes)) + ' · ' +
+        escapeHtml(T('settings.knowledge.doc_count', '{n} docs', { n: (p.doc_count || 0) }));
+      return '<div class="settings-row settings-section" style="border-left:3px solid var(--asp);padding-left:8px">' +
+        '<label for="' + cid + '" style="display:flex;align-items:flex-start;gap:8px;font-size:0.8rem;text-transform:none;color:var(--text);font-weight:600">' +
+        '<input type="checkbox" id="' + cid + '" data-pack="' + escapeHtml(String(p.id)) + '" data-on-change="onKnowledgePackToggle" ' + checked + ' ' + disabled + '/>' +
+        '<span>' + escapeHtml(p.title || p.id) +
+        (isCore ? ' <span class="hint" style="font-weight:400">' + escapeHtml(T('settings.knowledge.always_on', '(always on)')) + '</span>' : '') +
+        '</span></label>' +
+        '<div class="hint" style="margin-left:24px">' + escapeHtml(p.summary || '') + '</div>' +
+        '<div class="hint" style="margin-left:24px;color:var(--text-faint)">' + meta + '</div>' +
+        '</div>';
+    }).join('');
+    if (status) status.textContent = _fmtChunks(d.indexed_chunks);
+  } catch (_e) {
+    list.textContent = T('settings.knowledge.unavailable', 'Knowledge packs unavailable');
+    if (btn) btn.disabled = true;
+  }
+}
+try { window.loadKnowledgePacks = loadKnowledgePacks; } catch (_e) { /* no-op */ }
+
+/** Picking a preset checks exactly its packs (core stays on). 'custom' leaves the boxes as-is. */
+export function onKnowledgePresetSelect(name) {
+  if (!name || name === 'custom') return;
+  const packs = _knowledgePresets[name] || [];
+  document.querySelectorAll('#knowledge-packs-list input[type="checkbox"][data-pack]').forEach(function (cb) {
+    const pid = cb.getAttribute('data-pack');
+    if (pid === 'core') { cb.checked = true; return; }   // locked on regardless of the preset
+    cb.checked = packs.indexOf(pid) !== -1;
+  });
+}
+try { window.onKnowledgePresetSelect = onKnowledgePresetSelect; } catch (_e) { /* no-op */ }
+
+/** Editing a checkbox by hand means the set no longer matches a named preset → show Custom. */
+export function onKnowledgePackToggle() {
+  const sel = document.getElementById('knowledge-preset');
+  if (sel) sel.value = 'custom';   // programmatic .value does not fire change → no recursion
+}
+try { window.onKnowledgePackToggle = onKnowledgePackToggle; } catch (_e) { /* no-op */ }
+
+// ── Approvals & safety (knowledge-presets-1.7.5) ──────────────────────────────
+// A Claude-Code-style permission control so the user isn't approving every action, with a
+// visible safety guardrail. A single mode selector maps to three config keys saved through the
+// normal POST /settings path:
+//   tool_approval_bypass (bool)  — auto-approve tools with no prompt
+//   safe_mode (bool, default on) — HARD FLOOR: destructive tools (writes/shell/run_python/git/
+//                                  sends) STILL require approval even when bypass is on
+//   auto_approve_tools (list)    — auto-approve ONLY these named tools, subject to the same floors
+// All three are remote-protected server-side, so a save from a remote client is rejected and this
+// panel reports which keys were refused rather than claiming a silent success.
+//
+// The five tools offered for per-tool auto-approve are privacy/interaction tools — none of them
+// write files, run code, or send messages — so trusting them cannot bypass the destructive floor.
+const _APPROVAL_SAFE_TOOLS = ['browser_click', 'browser_fill', 'clipboard_read', 'clipboard_write', 'screenshot_desktop'];
+
+// mode → the exact config combo it writes. `trusted` fills auto_approve_tools from the checklist
+// at save time; the others set a fixed combo. See saveApprovalsSafety.
+const _APPROVAL_MODE_COMBOS = {
+  ask:     { tool_approval_bypass: false, safe_mode: true, auto_approve_tools: [] },
+  trusted: { tool_approval_bypass: false, safe_mode: true },  // auto_approve_tools = checked tools
+  guarded: { tool_approval_bypass: true,  safe_mode: true },
+  full:    { tool_approval_bypass: true,  safe_mode: false },
+};
+
+/** Derive the selector mode from the three stored keys. `safe_mode` defaults ON (true) when unset. */
+function _deriveApprovalMode(cfg) {
+  const bypass = !!(cfg && cfg.tool_approval_bypass);
+  const safe = !(cfg && cfg.safe_mode === false);   // default true
+  const tools = Array.isArray(cfg && cfg.auto_approve_tools) ? cfg.auto_approve_tools : [];
+  if (bypass && !safe) return 'full';
+  if (bypass && safe) return 'guarded';
+  if (!bypass && safe && tools.length) return 'trusted';
+  if (!bypass && safe && !tools.length) return 'ask';
+  return 'custom';   // e.g. bypass off + safe_mode off — not one of the four presets
+}
+
+/** The value of the checked mode radio, or 'ask' if none is checked. */
+function _selectedApprovalMode() {
+  const el = document.querySelector('input[name="approval-mode"]:checked');
+  return el ? el.value : 'ask';
+}
+
+/** Check the radio for `mode`. 'custom' checks the disabled read-only Custom radio. */
+function _setApprovalRadio(mode) {
+  const el = document.querySelector('input[name="approval-mode"][value="' + mode + '"]');
+  if (el) el.checked = true;
+}
+
+/** Show the trusted-tools checklist for trusted/custom, and the guarded/full notes for their modes. */
+function _reflectApprovalMode(mode) {
+  const show = function (id, on) { const el = document.getElementById(id); if (el) el.hidden = !on; };
+  show('approval-trusted-tools', mode === 'trusted' || mode === 'custom');
+  show('approval-guarded-note', mode === 'guarded');
+  show('approval-full-note', mode === 'full');
+}
+
+/**
+ * Populate the Approvals & safety panel from the server on panel open (openSettings) — same
+ * fire-and-forget shape as loadKnowledgePacks()/loadAppearance(). GETs /settings, derives the
+ * mode from the three keys, checks the matching radio, fills the tool checklist, and reveals the
+ * right notes. A failed GET leaves the static markup as-is rather than throwing.
+ */
+export async function loadApprovalsSafety() {
+  const wrap = document.getElementById('approvals-safety');
+  if (!wrap) return;
+  try {
+    const r = await fetch('/settings');
+    const cfg = await r.json().catch(function () { return {}; });
+    const tools = Array.isArray(cfg && cfg.auto_approve_tools) ? cfg.auto_approve_tools : [];
+    _APPROVAL_SAFE_TOOLS.forEach(function (name) {
+      const cb = document.getElementById('approve_tool_' + name);
+      if (cb) cb.checked = tools.indexOf(name) !== -1;
+    });
+    const mode = _deriveApprovalMode(cfg);
+    _setApprovalRadio(mode);
+    _reflectApprovalMode(mode);
+  } catch (_e) {
+    console.debug('loadApprovalsSafety:', _e);
+  }
+}
+try { window.loadApprovalsSafety = loadApprovalsSafety; } catch (_e) { /* no-op */ }
+
+/** A mode radio changed — reveal the checklist/notes for the newly chosen mode. */
+export function onApprovalModeChange(mode) {
+  _reflectApprovalMode(mode || _selectedApprovalMode());
+}
+try { window.onApprovalModeChange = onApprovalModeChange; } catch (_e) { /* no-op */ }
+
+/**
+ * Persist the chosen mode's config combo through POST /settings — the same save path the rest of
+ * this file uses. Reports what the SERVER did: the three keys are remote-protected, so a save from
+ * a remote client comes back with `rejected` and this says which keys were refused rather than
+ * printing a green success over a write that never landed.
+ */
+export async function saveApprovalsSafety() {
+  const msg = document.getElementById('approvals-save-msg');
+  const say = function (text, isErr) {
+    if (msg) {
+      msg.style.display = 'inline';
+      msg.textContent = text;
+      msg.setAttribute('data-kind', isErr ? 'warn' : 'ok');
+      if (!isErr) setTimeout(function () { msg.style.display = 'none'; }, 2200);
+    }
+    showToast(text);
+  };
+  const mode = _selectedApprovalMode();
+  if (mode === 'custom') {
+    // Custom is a read-only display of a config that matches no preset. There is no combo to write.
+    say(T('settings.approvals.pick_mode', 'Pick a mode above to apply a preset.'), true);
+    return;
+  }
+  const combo = _APPROVAL_MODE_COMBOS[mode];
+  if (!combo) { say(T('settings.approvals.pick_mode', 'Pick a mode above to apply a preset.'), true); return; }
+  const body = { tool_approval_bypass: combo.tool_approval_bypass, safe_mode: combo.safe_mode };
+  if (mode === 'ask') {
+    body.auto_approve_tools = [];
+  } else if (mode === 'trusted') {
+    const picked = [];
+    _APPROVAL_SAFE_TOOLS.forEach(function (name) {
+      const cb = document.getElementById('approve_tool_' + name);
+      if (cb && cb.checked) picked.push(name);
+    });
+    body.auto_approve_tools = picked;
+  }
+  const btn = document.getElementById('approvals-save-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(function () { return {}; });
+    const rejected = (d && d.rejected) || [];
+    if (!r.ok || !d || !d.ok) {
+      if (rejected.length) {
+        say(T('settings.approvals.rejected', 'Rejected: {keys} — a remote client cannot change approval or safety settings.', { keys: rejected.join(', ') }), true);
+      } else {
+        say(T('settings.save.failed_reason', 'Save failed — {why}', { why: ((d && d.error) || ('HTTP ' + r.status)) }), true);
+      }
+      return;
+    }
+    const label = T('settings.approvals.mode_' + mode, mode);
+    say(T('settings.approvals.saved', 'Saved — approval mode: {mode}', { mode: label }), false);
+  } catch (_e) {
+    say(T('settings.save_failed', 'Save failed'), true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+try { window.saveApprovalsSafety = saveApprovalsSafety; } catch (_e) { /* no-op */ }
+
+/**
+ * POST the selected packs, then reflect what the SERVER says is enabled + the fresh chunk count.
+ * The button is disabled for the round-trip (re-indexing can take a moment), showing "Re-indexing…"
+ * then "Saved — N chunks indexed". Same honesty rule as the rest of this file: render the effective
+ * enabled set the server returns, not the boxes we posted.
+ */
+export async function saveKnowledgePacks() {
+  const btn = document.getElementById('knowledge-packs-save-btn');
+  const msg = document.getElementById('knowledge-packs-save-msg');
+  const status = document.getElementById('knowledge-packs-status');
+  const packs = _selectedKnowledgePacks();
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = T('settings.knowledge.reindexing', 'Re-indexing…');
+  try {
+    const r = await fetch('/knowledge/packs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packs: packs }),
+    });
+    const d = await r.json().catch(function () { return {}; });
+    if (!r.ok || !d || !d.ok) {
+      if (msg) msg.textContent = T('settings.save_failed_reason', 'Save failed: {why}', { why: ((d && d.error) || ('HTTP ' + r.status)) });
+      return;
+    }
+    // The server's effective enabled set wins over the click, and core is always on.
+    const enabled = Array.isArray(d.enabled) ? d.enabled : packs;
+    document.querySelectorAll('#knowledge-packs-list input[type="checkbox"][data-pack]').forEach(function (cb) {
+      const pid = cb.getAttribute('data-pack');
+      cb.checked = pid === 'core' || enabled.indexOf(pid) !== -1;
+    });
+    if (status) status.textContent = _fmtChunks(d.indexed_chunks);
+    if (msg) msg.textContent = T('settings.knowledge.saved', 'Saved — {n} chunks indexed', { n: (Number(d.indexed_chunks) || 0).toLocaleString() });
+    showToast(T('settings.knowledge.saved_toast', 'Knowledge packs saved'));
+  } catch (_e) {
+    if (msg) msg.textContent = T('settings.save_failed', 'Save failed');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+try { window.saveKnowledgePacks = saveKnowledgePacks; } catch (_e) { /* no-op */ }
 
 export async function runKnowledgeIngest() {
   // #km-source / #km-ingest-list — NOT #ingest-path / #ingest-msg, which exist nowhere. This read null,

@@ -93,6 +93,7 @@ ddgs>=9.0,<10                   # DuckDuckGo web search (pure Python, no browser
 arxiv>=2.1                      # arXiv paper search and metadata
 pandas>=2.0,<3                  # CSV/tabular data reading and statistics
 nbformat>=5.10                  # Jupyter .ipynb read/edit tools (notebook_read_cells, notebook_edit_cell)
+jedi>=0.19                      # semantic code navigation (jump-to-definition) for the code_definition tool; flips a path in impl/code.py so CI must install it
 
 # ─── HTTP & Networking ────────────────────────────────────────────────────────
 httpx>=0.27                     # Async HTTP client (used for internal requests)

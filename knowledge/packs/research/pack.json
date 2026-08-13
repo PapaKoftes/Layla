@@ -1,0 +1,14 @@
+{
+  "id": "research",
+  "title": "Research & Synthesis",
+  "aspect": "nyx",
+  "summary": "Framing questions, evaluating sources, search strategy, synthesis, verification & citation.",
+  "docs": [
+    "research-method.md",
+    "source-evaluation.md",
+    "search-strategy.md",
+    "synthesis-and-notetaking.md",
+    "verification-and-citation.md"
+  ],
+  "approx_bytes": 26073
+}

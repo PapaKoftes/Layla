@@ -336,6 +336,28 @@ jobs:
           print("downloaded:", r.get("filename"))
           PY
 
+      - name: Prefetch embedding model (deterministic, like a real install)
+        working-directory: agent
+        # test_completion.py builds a real system head; a substantive goal now (correctly) triggers the
+        # knowledge-RAG path, whose FIRST touch downloads the sentence-transformers embedder from
+        # HuggingFace. A real install does this at install time via prefetch_embedder(); CI did not, so the
+        # download happened MID-TEST and, on a cold/slow HF cache, hung past pytest-timeout (a 600s "pass or
+        # hang" coin flip on HF latency). Warm the cache here, deterministically and with a hard cap, so the
+        # in-test index is fast and the failure mode — if HF is genuinely down — is a clear, fast step
+        # failure instead of a mystery timeout inside test_completion.
+        timeout-minutes: 10
+        env:
+          HF_HUB_DOWNLOAD_TIMEOUT: "30"   # fail a stalled chunk fast instead of blocking indefinitely
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from layla.memory.vector_store import prefetch_embedder
+          r = prefetch_embedder()
+          print("prefetch_embedder:", r)
+          assert r.get("ok"), f"embedder prefetch failed: {r.get('detail')}"
+          PY
+
       - name: Real inference smoke (run_completion completes one turn)
         working-directory: agent
         env:

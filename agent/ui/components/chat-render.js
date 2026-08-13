@@ -417,6 +417,54 @@ export function _renderReasoningTreeSummary(container, summary) {
   container.appendChild(wrap);
 }
 
+// ── Answer-quality (honesty / confidence) indicator ───────────────────────────
+// Layla self-assesses every answer (groundedness / cite-or-abstain + a confidence score) and
+// attaches the result at state.answer_quality. Surface it ONLY when it signals uncertainty —
+// unverified claims, an abstain, or a low confidence score. On a confident answer this renders
+// nothing, so it is invisible on the normal happy path. Absent metadata → behaves as before.
+export function _renderAnswerQuality(container, aq) {
+  if (!container || !aq || typeof aq !== 'object') return;
+  var grounding = (aq.grounding && typeof aq.grounding === 'object') ? aq.grounding : {};
+  var mode = grounding.mode || (grounding.enabled ? 'flag' : 'off');
+  if (mode === 'off') return;
+  var unsupported = Array.isArray(grounding.unsupported) ? grounding.unsupported : [];
+  var abstain = (aq.abstain === true) || (grounding.abstain === true);
+  var confidence = (typeof aq.confidence === 'number') ? aq.confidence : 1;
+  // Uncertainty gate — mirrors the backend's own signal. If none of these trip, say nothing.
+  if (!(unsupported.length > 0 || abstain || confidence < 0.6)) return;
+  // Idempotent: the streaming path re-renders the bubble as tokens arrive, so skip if already shown.
+  if (container.querySelector('.answer-quality')) return;
+
+  if (unsupported.length > 0) {
+    // Expandable list of the claim texts she couldn't verify (real text + <details> = accessible tooltip).
+    var det = document.createElement('details');
+    det.className = 'tool-trace answer-quality';
+    var sum = document.createElement('summary');
+    sum.textContent = '⚠ couldn’t verify ' + unsupported.length + ' claim' + (unsupported.length === 1 ? '' : 's') + ' against what I know';
+    det.appendChild(sum);
+    var body = document.createElement('div');
+    body.className = 'tool-trace-content';
+    body.textContent = unsupported.map(function (u, i) {
+      var claim = (u && u.claim != null) ? String(u.claim) : String(u || '');
+      return (i + 1) + '. ' + claim;
+    }).join('\n');
+    det.appendChild(body);
+    container.appendChild(det);
+    return;
+  }
+
+  var line = document.createElement('div');
+  line.className = 'memory-attribution answer-quality';
+  if (abstain) {
+    line.textContent = '⚠ low confidence — treat as a guess';
+    line.title = 'Layla flagged this answer as uncertain.';
+  } else {
+    line.textContent = 'confidence ~' + Math.round(confidence * 100) + '%';
+    line.title = 'Layla’s self-assessed confidence in this answer.';
+  }
+  container.appendChild(line);
+}
+
 // ── Remember a Layla bubble as a learning ─────────────────────────────────────
 export async function rememberLaylaBubble(bubble, btn) {
   var txt = (bubble && (bubble.innerText || bubble.textContent) || '').trim();
@@ -558,7 +606,7 @@ async function resendEditedUserMessage(msgDiv, editedText) {
 }
 
 // ── Main chat message renderer ────────────────────────────────────────────────
-export function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfluenced, reasoningTreeSummary) {
+export function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfluenced, reasoningTreeSummary, answerQuality) {
   hideEmpty();
   var chat = document.getElementById('chat');
   if (!chat) return;
@@ -759,6 +807,9 @@ export function addMsg(role, text, aspectName, deliberated, steps, uxStates, mem
 
   // ── Reasoning tree summary ──
   _renderReasoningTreeSummary(div, reasoningTreeSummary);
+
+  // ── Honesty / confidence indicator (only when she's uncertain) ──
+  _renderAnswerQuality(div, answerQuality);
 
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;

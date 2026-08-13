@@ -329,3 +329,67 @@ def process_list(limit: int = 20) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+
+def benchmark_hardware(measure_speed: bool = False) -> dict:
+    """Report this machine's capability tier and the settings Layla auto-tuned for it.
+
+    Surfaces the hardware-adaptive profile Layla already applies automatically (no config needed):
+    the detected tier, inference settings (context window, GPU offload, threads), how rich the
+    per-turn pipeline is, and a plain-English summary of what runs well here. Set measure_speed=True
+    to also run a short generation and report tokens/sec (needs a loaded model; slower).
+    """
+    try:
+        from services.infrastructure.auto_tune import compute_optimization_profile
+        profile = compute_optimization_profile()
+    except Exception as e:
+        return {"ok": False, "error": f"could not compute optimization profile: {e}"}
+    tier = str(profile.get("_opt_tier") or "unknown")
+    cores = ram_gb = None
+    try:
+        import psutil
+        cores = psutil.cpu_count(logical=False)
+        ram_gb = round(psutil.virtual_memory().total / (1024 ** 3), 1)
+    except Exception:
+        pass
+    on_gpu = int(profile.get("n_gpu_layers") or 0) != 0
+    _TIER_SUMMARY = {
+        "potato": "Lean mode: CPU-only, low cores/RAM. Chat, code and web tools all work; replies are slower "
+                  "and heavy extras (huge context, extra reasoning passes) are trimmed automatically so it stays responsive.",
+        "cpu": "CPU inference: usable at a few tokens/sec. Good for chat, code and research; very large contexts feel slow.",
+        "cpu_plus": "Stronger CPU: comfortable for everyday chat/code/research on the CPU; still no GPU speed-up.",
+        "gpu_low": "GPU-accelerated (entry): fast replies, full pipeline, bigger context.",
+        "gpu_mid": "GPU-accelerated (solid): fast, full pipeline, speculative decoding where it helps.",
+        "gpu_high": "GPU-accelerated (strong): largest context and the richest pipeline; near-instant replies.",
+    }
+    report = {
+        "ok": True,
+        "tier": tier,
+        "accelerator": "gpu" if on_gpu else "cpu",
+        "cpu_physical_cores": cores,
+        "ram_gb": ram_gb,
+        "applied_settings": {
+            "n_ctx": profile.get("n_ctx"),
+            "n_gpu_layers": profile.get("n_gpu_layers"),
+            "n_threads": profile.get("n_threads"),
+            "n_batch": profile.get("n_batch"),
+            "flash_attn": profile.get("flash_attn"),
+        },
+        "pipeline": {
+            k: profile.get(k) for k in
+            ("hyde_enabled", "self_reflection_enabled", "multi_agent_enabled", "reasoning_depth",
+             "system_head_budget_ratio")
+            if k in profile
+        },
+        "summary": _TIER_SUMMARY.get(tier, "A hardware-appropriate profile is applied automatically."),
+        "note": "These settings are applied automatically on every start (auto_tune) — no hand-tuning needed.",
+    }
+    if measure_speed:
+        try:
+            import runtime_safety
+            from services.llm.model_manager import benchmark_model
+            mdl = str(runtime_safety.load_config().get("model_filename") or "")
+            report["speed"] = benchmark_model(mdl) if mdl else {"ok": False, "error": "no model configured"}
+        except Exception as e:
+            report["speed"] = {"ok": False, "error": f"speed benchmark failed: {e}"}
+    return report

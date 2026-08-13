@@ -1,0 +1,8 @@
+{
+  "id": "core",
+  "title": "Layla Core",
+  "aspect": "",
+  "summary": "Always-on self-knowledge: who Layla is, her six aspects, how memory/tools/knowledge work, honest limits.",
+  "docs": ["layla-self.md"],
+  "approx_bytes": 2600
+}

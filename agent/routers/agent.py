@@ -1336,6 +1336,7 @@ async def agent(req: AgentRequest, request: Request):
                         "reasoning_mode": result.get("reasoning_mode"),
                         "conversation_id": conversation_id,
                         "reasoning_tree_summary": result.get("reasoning_tree_summary"),
+                        "answer_quality": _json_safe(result.get("answer_quality")),
                         "steps": _steps_safe,
                         "run_budget_summary": result.get("run_budget_summary") or {},
                         "confidence": result.get("confidence") or {},
@@ -1399,6 +1400,7 @@ async def agent(req: AgentRequest, request: Request):
                         "reasoning_mode": result.get("reasoning_mode"),
                         "conversation_id": conversation_id,
                         "reasoning_tree_summary": result.get("reasoning_tree_summary"),
+                        "answer_quality": _json_safe(result.get("answer_quality")),
                         "run_budget_summary": result.get("run_budget_summary") or {},
                         "confidence": result.get("confidence") or {},
                     }

@@ -212,6 +212,40 @@ def probe_hardware() -> dict[str, Any]:
 
 # ── Setup steps ──────────────────────────────────────────────────────────
 
+# v1.7.5: map the first-run purpose choice -> a knowledge preset (which domain packs Layla
+# starts knowing). Default when unset stays "all packs", so this only narrows/targets.
+_PURPOSE_PRESET = {
+    "cad_cam": "maker",
+    "software_dev": "engineer",
+    "research": "researcher",
+    "data_science": "researcher",
+    "personal_assistant": "companion",
+    "creative": "companion",
+    "all": "everything",
+}
+
+
+def _purpose_to_preset(choices: list[str]) -> str:
+    """Resolve a knowledge preset from the operator's purpose selection."""
+    if not choices or "all" in choices or len(choices) >= 3:
+        return "everything"
+    presets = {_PURPOSE_PRESET.get(c) for c in choices if _PURPOSE_PRESET.get(c)}
+    presets.discard(None)
+    return presets.pop() if len(presets) == 1 else "everything"
+
+
+def _persist_knowledge_preset(preset: str) -> None:
+    if not preset:
+        return
+    try:
+        import runtime_safety
+
+        runtime_safety.save_config_keys({"knowledge_preset": preset}, editable_only=False, clamp=False)
+        print(f"  → Knowledge: starting with the '{preset}' pack set (change anytime in Settings).")
+    except Exception:
+        pass
+
+
 def step_purpose() -> list[str]:
     """Step 1: What do you want Layla to help with?"""
     _print_step(1, 8, "What would you like Layla to help with?")
@@ -228,6 +262,8 @@ def step_purpose() -> list[str]:
     print()
     print(f"  Selected: {', '.join(choices)}")
     print(f"  Components to install: {', '.join(sorted(all_extras))}")
+
+    _persist_knowledge_preset(_purpose_to_preset(choices))
 
     return sorted(all_extras)
 

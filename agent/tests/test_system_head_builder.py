@@ -73,8 +73,13 @@ class TestNeedsKnowledgeRag:
         assert needs_knowledge_rag("help me reflect on my burnout") is True
 
     def test_simple_goal(self):
+        # v1.7.5: substantive tasks now consult the knowledge base — retrieval is relevance-gated
+        # (knowledge_min_similarity), so a real engineering task safely triggers RAG. Only phatic /
+        # social turns stay off. (Previously this narrowly returned False for any non-"research" goal.)
         from services.prompts.system_head_builder import needs_knowledge_rag
-        assert needs_knowledge_rag("fix the bug in main.py") is False
+        assert needs_knowledge_rag("fix the bug in main.py") is True
+        assert needs_knowledge_rag("thanks!") is False
+        assert needs_knowledge_rag("hi") is False
 
     def test_empty(self):
         from services.prompts.system_head_builder import needs_knowledge_rag
