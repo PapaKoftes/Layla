@@ -1,7 +1,10 @@
 """
 agent/core/validator.py — Phase 5: Validate
 
-Runs after every tool execution. Always runs — cannot be skipped.
+Best-effort post-tool validation, invoked by verification_engine for dict tool results.
+Advisory only: it is SKIPPED for approval/policy/loop-denied results and for non-dict results,
+and any error is swallowed (logged as "core.validator skipped"). It annotates warnings; it never
+aborts the loop. (Do not read this as an unbypassable gate — it is not one.)
 
 Checks:
   1. schema_valid   — result is a dict with at least an 'ok' key
