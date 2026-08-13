@@ -32,7 +32,7 @@ import {
   laylaShowTypingIndicator, laylaRemoveTypingIndicator,
   toggleSendButton, UX_STATE_LABELS,
   laylaAgentStreamTimeoutMs, laylaStalledSilenceMs,
-  _renderDeliberationTranscript, _renderReasoningTreeSummary, enhanceCodeBlocks,
+  _renderDeliberationTranscript, _renderReasoningTreeSummary, _renderAnswerQuality, enhanceCodeBlocks,
 } from './chat-render.js';
 import { formatLaylaLabelHtml } from './aspect.js';
 
@@ -727,6 +727,9 @@ export async function send() {
             // collapsible on the streaming done-frame (the non-stream path passes it to addMsg directly). Without
             // this the whole "Reasoning summary" element the backend ships was silently dropped.
             try { if (obj.reasoning_tree_summary) _renderReasoningTreeSummary(div, obj.reasoning_tree_summary); } catch (_e) { console.debug('app:', _e); }
+            // Honesty / confidence indicator — the backend ships answer_quality on the done-frame (mirrors
+            // reasoning_tree_summary). Renders only when she's on thin ice; nothing on a confident answer.
+            try { if (obj.answer_quality) _renderAnswerQuality(div, obj.answer_quality); } catch (_e) { console.debug('app:', _e); }
             // Feedback door: 👍/👎 under the finalized answer (streaming default path).
             try { attachFeedbackBar(div, full, msg); } catch (_e) { console.debug('app:', _e); }
             // "Memory updated" receipt — a small chip when Layla filed a durable fact this turn.
@@ -800,7 +803,9 @@ export async function send() {
       var _delib = _steps && _steps.some(function (s) { return s.deliberated; });
       var _uxStates = data && data.state && data.state.ux_states;
       var _memInf = data && data.state && data.state.memory_influenced;
-      var _amDiv = addMsg('layla', resp, replyAspect, _delib, _steps, _uxStates, _memInf, data && data.reasoning_tree_summary);
+      // Honesty / confidence signal lives on state.answer_quality (non-stream JSON carries the full state).
+      var _aq = data && data.state && data.state.answer_quality;
+      var _amDiv = addMsg('layla', resp, replyAspect, _delib, _steps, _uxStates, _memInf, data && data.reasoning_tree_summary, _aq);
       // Feedback door: 👍/👎 under the finalized answer (non-stream path).
       try { attachFeedbackBar(_amDiv, resp, msg); } catch (_e) { console.debug('app:', _e); }
       if (data.status === 'pipeline_needs_input') {

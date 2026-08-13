@@ -35,7 +35,12 @@ TOOLS = {
     "security_scan": {
         "dangerous": False, "require_approval": False, "risk_level": "low",
         "category": "code",
-        "description": "Scan source code for common security issues: hardcoded secrets, SQL injection patterns, unsafe deserialization.",
+        "description": "Scan source code for security issues. scan_type: bandit (Python CWEs), secrets (hardcoded keys), deps (vulnerable packages), semgrep (deeper multi-language rules).",
+    },
+    "code_definition": {
+        "dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True,
+        "category": "code",
+        "description": "Jump-to-definition: resolve where the symbol at a line/column in a Python file is actually defined (semantic, via jedi — not regex).",
     },
     "code_symbols": {
         "dangerous": False, "require_approval": False, "risk_level": "low",

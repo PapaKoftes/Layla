@@ -366,6 +366,7 @@ def security_scan(path: str, scan_type: str = "bandit") -> dict:
     - 'bandit': static analysis for Python security issues (CWEs, hardcoded secrets, etc.)
     - 'deps': check requirements.txt or pyproject.toml for vulnerable packages
     - 'secrets': pattern-based scan for hardcoded secrets/tokens/keys in any file
+    - 'semgrep': deeper multi-language static analysis via semgrep (optional dependency)
     """
     target = Path(path)
     if not inside_sandbox(target):
@@ -474,7 +475,39 @@ def security_scan(path: str, scan_type: str = "bandit") -> dict:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    return {"ok": False, "error": f"Unknown scan_type: {scan_type}. Use bandit/secrets/deps"}
+    elif scan_type == "semgrep":
+        # Deeper static analysis than bandit (multi-language rulesets). Optional: semgrep is not a
+        # default dependency and is finicky on Windows — if it is absent we say so, never fake a
+        # clean result. `--config auto` pulls the community rules; drop to a local ruleset offline.
+        try:
+            r = subprocess.run(
+                [sys.executable, "-m", "semgrep", "scan", "--config", "auto", "--json", "-q", str(target)],
+                capture_output=True, text=True, timeout=180, encoding="utf-8", errors="replace",
+            )
+            import json as _json
+
+            data = _json.loads(r.stdout) if (r.stdout or "").strip().startswith("{") else None
+            if data is None:
+                return {"ok": False, "error": "semgrep did not run (not installed, or produced no JSON): pip install semgrep"}
+            findings = [
+                {
+                    "check": f.get("check_id"),
+                    "file": f.get("path"),
+                    "line": (f.get("start") or {}).get("line"),
+                    "severity": (f.get("extra") or {}).get("severity"),
+                    "message": ((f.get("extra") or {}).get("message") or "")[:200],
+                }
+                for f in (data.get("results") or [])
+            ]
+            return {"ok": True, "scan_type": "semgrep", "finding_count": len(findings), "findings": findings[:50]}
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "semgrep timed out"}
+        except FileNotFoundError:
+            return {"ok": False, "error": "semgrep not installed: pip install semgrep"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    return {"ok": False, "error": f"Unknown scan_type: {scan_type}. Use bandit/secrets/deps/semgrep"}
 
 def code_symbols(path: str, include_private: bool = False) -> dict:
     """
@@ -890,4 +923,43 @@ def code_format(path: str, formatter: str = "ruff") -> dict:
         return {"ok": False, "error": f"{formatter} not installed: pip install {formatter}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def code_definition(path: str, line: int, column: int) -> dict:
+    """Jump-to-definition for the symbol at (line, column) in a Python file, via jedi.
+
+    Semantic code navigation (not regex): resolves where the name under the cursor is
+    actually defined and returns each definition's file, line, type, and a short signature.
+    Python only. `jedi` is an optional dependency — if it is absent this returns ok:False
+    with install guidance rather than pretending nothing was found.
+    """
+    target = Path(path)
+    if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
+        target = (Path(_effective_sandbox.path) / path).resolve()
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.is_file():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import jedi  # optional dependency
+    except ImportError:
+        return {"ok": False, "error": "jedi not installed: pip install jedi (or install the [research] extra)"}
+    try:
+        source = target.read_text(encoding="utf-8", errors="replace")
+        script = jedi.Script(code=source, path=str(target))
+        defs = script.goto(int(line), int(column), follow_imports=True, follow_builtin_imports=False)
+        out = [
+            {
+                "name": d.name,
+                "type": d.type,
+                "path": str(d.module_path) if d.module_path else "",
+                "line": d.line,
+                "column": d.column,
+                "description": (d.description or "")[:200],
+            }
+            for d in defs[:10]
+        ]
+        return {"ok": True, "definitions": out, "note": ("" if out else "no definition found at that position")}
+    except Exception as e:
+        return {"ok": False, "error": f"jedi failed: {e}"}
 
