@@ -782,7 +782,6 @@ def load_config() -> dict:
             "knowledge_max_bytes": 4000,
             "knowledge_chunks_k": 5,
             "knowledge_min_similarity": 0.40,
-            "knowledge_rag_budget_s": 8.0,
             "knowledge_preset": "",
             "knowledge_packs": [],
             "learnings_n": 30,

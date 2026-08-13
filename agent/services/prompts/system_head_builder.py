@@ -716,20 +716,25 @@ def _resolve_knowledge_block(cfg: dict, goal: str, aspect: "dict | None", state:
                 embedder_is_loaded,
                 get_knowledge_chunks_with_sources,
                 refresh_knowledge_if_changed,
-                run_with_time_budget,
             )
             k = max(1, min(20, int(cfg.get("knowledge_chunks_k", 5))))
-            _proj_domains: list[str] = []
-            try:
-                from layla.memory.db import get_project_context
-                _pc = get_project_context() or {}
-                _proj_domains = [str(d) for d in (_pc.get("domains") or []) if d]
-            except Exception as _pde:
-                logger.debug("context[project_domains_knowledge] failed: %s", _pde)
-
-            def _fetch_chunks() -> list:
-                # refresh (may reindex) then retrieve — the whole embedder-dependent path in one unit so a
-                # cold embedder DOWNLOAD is time-boxed as a single step, not two unbounded ones.
+            # Only do semantic RAG when the embedder is ALREADY warm. A cold embedder's first touch is a
+            # big model load/download; doing it here would either freeze the turn (blocking load) or, if
+            # pushed to a background thread, risk a native SIGABRT when the interpreter tears down while
+            # torch is still initialising off the main thread. The app warms the embedder at startup (a
+            # tracked, shutdown-joined thread); until it's warm we fall through to the static reference docs
+            # below, and RAG resumes automatically once it is. No blocking, no unmanaged threads.
+            if not embedder_is_loaded():
+                chunks_with_sources = []
+                logger.debug("context[knowledge_rag] embedder not warm yet; using static reference docs this turn")
+            else:
+                _proj_domains: list[str] = []
+                try:
+                    from layla.memory.db import get_project_context
+                    _pc = get_project_context() or {}
+                    _proj_domains = [str(d) for d in (_pc.get("domains") or []) if d]
+                except Exception as _pde:
+                    logger.debug("context[project_domains_knowledge] failed: %s", _pde)
                 try:
                     refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
                 except Exception as _e:
@@ -737,33 +742,13 @@ def _resolve_knowledge_block(cfg: dict, goal: str, aspect: "dict | None", state:
                 _aid = (aspect.get("id") or "") if isinstance(aspect, dict) else ""
                 try:
                     from layla.memory.vector_store import get_knowledge_chunks_with_parent
-                    return get_knowledge_chunks_with_parent(
+                    chunks_with_sources = get_knowledge_chunks_with_parent(
                         goal, k=k, aspect_id=_aid, project_domains=_proj_domains or None,
                     )
                 except Exception:
-                    return get_knowledge_chunks_with_sources(
+                    chunks_with_sources = get_knowledge_chunks_with_sources(
                         goal, k=k, aspect_id=_aid, project_domains=_proj_domains or None,
                     )
-
-            # Warm embedder -> retrieval is an in-memory lookup (<100ms): run inline, behavior unchanged.
-            # Cold embedder -> the first touch DOWNLOADS the model (hundreds of MB); box it to a budget so a
-            # slow/absent network degrades to the static reference docs below instead of freezing this turn.
-            # The download keeps running in the background and warms the cache for the next turn.
-            if embedder_is_loaded():
-                chunks_with_sources = _fetch_chunks()
-            else:
-                _budget_s = float(cfg.get("knowledge_rag_budget_s", 8.0) or 0)
-                if _budget_s > 0:
-                    _done, chunks_with_sources = run_with_time_budget(_fetch_chunks, _budget_s)
-                    if not _done:
-                        logger.info(
-                            "context[knowledge_rag] embedder still warming; using static reference docs "
-                            "for this turn (budget %.1fs). Semantic recall resumes once the cache is warm.",
-                            _budget_s,
-                        )
-                    chunks_with_sources = chunks_with_sources or []
-                else:
-                    chunks_with_sources = _fetch_chunks()
             if chunks_with_sources:
                 knowledge = "Reference docs (relevant to this turn):\n" + "\n\n".join(c.get("text", "") for c in chunks_with_sources[:k])
                 if state is not None:
