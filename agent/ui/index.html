@@ -1494,6 +1494,21 @@
       </div>
       <div id="phone-access-status" class="hint" style="margin-top:6px"></div>
     </div>
+    <!-- Knowledge packs (v1.7.5): domain knowledge Layla indexes for retrieval. The preset dropdown
+         and pack rows are populated by loadKnowledgePacks() in settings-full.js when the panel opens;
+         Save POSTs the selection to /knowledge/packs and re-indexes. `core` is always on (locked). -->
+    <div class="settings-knowledge-packs" id="settings-knowledge-packs" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
+      <div class="hint" style="margin-bottom:6px"><strong data-i18n="settings.knowledge.heading">Knowledge packs</strong> — domain knowledge Layla indexes for retrieval. Pick a preset or toggle packs individually.</div>
+      <label for="knowledge-preset" style="display:block;margin:4px 0;font-size:0.75rem" data-i18n="settings.knowledge.preset_label">Preset
+        <select id="knowledge-preset" class="settings-select" data-on-change="onKnowledgePresetSelect" data-pass-value style="display:block;width:100%;max-width:220px;margin-top:4px"></select>
+      </label>
+      <div id="knowledge-packs-list" style="margin-top:8px;font-size:0.72rem">Loading…</div>
+      <div id="knowledge-packs-status" class="hint" role="status" aria-live="polite" style="margin-top:6px"></div>
+      <div style="margin-top:6px">
+        <button type="button" id="knowledge-packs-save-btn" class="settings-save" data-action="saveKnowledgePacks" data-i18n="settings.knowledge.save">Save knowledge packs</button>
+        <span id="knowledge-packs-save-msg" class="hint" role="status" aria-live="polite" style="margin-left:8px"></span>
+      </div>
+    </div>
     <div class="settings-btns">
       <button class="settings-save" data-action="saveSettings">Save Settings</button>
       <button class="settings-close" data-action="closeSettings" data-i18n="action.close">Close</button>

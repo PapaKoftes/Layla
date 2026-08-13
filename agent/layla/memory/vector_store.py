@@ -1300,10 +1300,24 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
         except Exception as _exc:
             logger.debug("vector_store:L653: %s", _exc, exc_info=False)
 
+        # Preset scoping (v1.7.5): only index docs from enabled packs. Disabled-pack chunks then
+        # fall out of new_ids and are pruned below, so toggling a pack off actually removes it from
+        # search. Default (nothing configured) -> _enabled is None -> index everything.
+        _enabled = None
+        _is_enabled = None
+        try:
+            from .knowledge_packs import is_doc_enabled as _is_enabled, resolve_enabled_packs
+            import runtime_safety as _rs
+
+            _enabled = resolve_enabled_packs(_rs.load_config())
+        except Exception:
+            _is_enabled = None
         chunks: list[tuple[str, str, dict]] = []
         for ext in ("*.md", "*.txt", "*.pdf"):
             for f in sorted(knowledge_dir.rglob(ext)):
                 if ".identity" in str(f):
+                    continue
+                if _is_enabled is not None and not _is_enabled(f, _enabled):
                     continue
                 try:
                     if f.suffix.lower() == ".pdf":
