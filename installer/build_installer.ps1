@@ -109,11 +109,9 @@ finally { Pop-Location }
 # Default: ON. Set env LAYLA_BUNDLE_EMBEDDED_PYTHON=0 to skip.
 if ($env:LAYLA_BUNDLE_EMBEDDED_PYTHON -ne "0") {
   Write-Host "==> Bundling embeddable Python (set LAYLA_BUNDLE_EMBEDDED_PYTHON=0 to skip)"
-  try {
-    & (Join-Path $PSScriptRoot "bundle_embedded_python.ps1") -PayloadDir $Payload
-  } catch {
-    Write-Warning "bundle_embedded_python.ps1 failed: $_"
-  }
+  # No try/catch swallow: if bundling is ON and fails, the build must FAIL rather than ship an installer
+  # whose embedded Python is missing or dep-less (that is exactly how a broken runtime shipped green).
+  & (Join-Path $PSScriptRoot "bundle_embedded_python.ps1") -PayloadDir $Payload
 }
 
 Write-Host "==> Seed user template (optional copy on first run is handled by launcher)"

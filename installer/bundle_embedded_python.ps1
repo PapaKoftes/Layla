@@ -92,13 +92,18 @@ if (Test-Path $req) {
       }
       Set-Content -Path $tmpReq -Value ($filtered -join "`r`n") -Encoding UTF8
       & $pyExe -m pip install -r $tmpReq --no-warn-script-location --disable-pip-version-check --no-cache-dir
+      if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements returned exit $LASTEXITCODE" }
     } finally {
       if (Test-Path $tmpReq) { Remove-Item $tmpReq -Force -ErrorAction SilentlyContinue }
     }
 
-    & $pyExe -c "import llama_cpp; print('llama_cpp import ok:', getattr(llama_cpp, '__version__', 'unknown'))" | Write-Host
+    # Fail LOUD if the embedded Python is missing anything the app needs to boot. Silently continuing here
+    # is how a dep-less/degraded runtime shipped green before; a broken bundle must fail the build, not the
+    # user's first launch. (model2vec is the default embedder — without it semantic memory is degraded.)
+    & $pyExe -c "import llama_cpp, uvicorn, fastapi, model2vec; print('embedded deps import ok: llama_cpp', llama_cpp.__version__)" | Write-Host
+    if ($LASTEXITCODE -ne 0) { throw "embedded Python is missing required imports (llama_cpp/uvicorn/fastapi/model2vec)" }
   } catch {
-    Write-Warning "pip install -r requirements failed: $_"
+    throw "Embedded Python provisioning FAILED (refusing to ship a broken runtime): $_"
   }
 } else {
   Write-Warning "requirements.txt not found at $req"
