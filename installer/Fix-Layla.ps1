@@ -83,28 +83,49 @@ $logDir = Join-Path $env:LAYLA_DATA_DIR "logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir "launch.log"
 
-# Models folder fix: a packaged install downloads models into <install>\models, which under Program Files
-# needs admin -> the Models page download fails and you get "Service temporarily unavailable" (no model).
-# Point models_dir at the writable per-user data dir so downloads work with no admin.
-$modelsDir = Join-Path $env:LAYLA_DATA_DIR "models"
-New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
+# Resolve a models folder that is ABSOLUTE and writable. Two traps this avoids:
+#  - Program Files\Layla\models needs admin -> downloads fail -> "Service temporarily unavailable".
+#  - a config value like "~/.layla/models": PowerShell expands ~, but Python does NOT, so a naive pass to
+#    the downloader wrote the file into a LITERAL "~" folder while the app looked in the real home. We
+#    expand ~ ourselves and store an absolute path so every tool agrees.
+function Expand-LaylaPath([string]$p) {
+  if ([string]::IsNullOrWhiteSpace($p)) { return "" }
+  if ($p.StartsWith("~")) { $p = Join-Path $HOME ($p.Substring(1).TrimStart('\', '/')) }
+  try { return [System.IO.Path]::GetFullPath($p) } catch { return $p }
+}
 $cfgPath = Join-Path $env:LAYLA_DATA_DIR "runtime_config.json"
 $configChanged = $false
-try {
-  $cfg = if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
-  $cur = if ($cfg.PSObject.Properties.Name -contains 'models_dir') { [string]$cfg.models_dir } else { '' }
-  if (-not $cur -or $cur -like "*Program Files*" -or $cur -like "$root*") {
+$cfg = try { if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} } } catch { [pscustomobject]@{} }
+$cur = if ($cfg.PSObject.Properties.Name -contains 'models_dir') { [string]$cfg.models_dir } else { '' }
+$curAbs = Expand-LaylaPath $cur
+# Keep the current dir only if it is absolute AND not under Program Files; otherwise use the data dir.
+if ($curAbs -and ($curAbs -notlike "*Program Files*")) { $modelsDir = $curAbs }
+else { $modelsDir = Join-Path $env:LAYLA_DATA_DIR "models" }
+New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
+# Persist the ABSOLUTE path (removes any ~ ambiguity for the app + the downloader).
+if ($cur -ne $modelsDir) {
+  try {
     $cfg | Add-Member -NotePropertyName models_dir -NotePropertyValue $modelsDir -Force
     ($cfg | ConvertTo-Json -Depth 30) | Set-Content -Path $cfgPath -Encoding UTF8
     $configChanged = $true
-    Write-Host "Models  : set to writable folder -> $modelsDir" -ForegroundColor Green
-  } else { Write-Host "Models  : using $cur"; $modelsDir = $cur }
-} catch { Write-Host "  (models_dir config step skipped: $_)" -ForegroundColor DarkYellow }
+  } catch { }
+}
+Write-Host "Models  : $modelsDir" -ForegroundColor Green
 
-# Optional: download an AI model directly (so you don't have to use the Models page). -DownloadModel <name>
-# fetches a small get_model.py helper and streams the model into models_dir with a progress bar, then sets
-# it as the active model. Without a model the app answers "Service temporarily unavailable".
-if ($DownloadModel) {
+# Rescue any model a PRIOR (buggy) run wrote into a literal "~" folder, so we don't redownload GBs.
+foreach ($stray in @((Join-Path $HOME '~\.layla\models'), (Join-Path (Get-Location).Path '~\.layla\models'))) {
+  if ((Test-Path $stray) -and ((Resolve-Path $stray).Path -ne $modelsDir)) {
+    Get-ChildItem $stray -Filter *.gguf -ErrorAction SilentlyContinue | ForEach-Object {
+      $dest = Join-Path $modelsDir $_.Name
+      if (-not (Test-Path $dest)) { Write-Host ("Rescuing already-downloaded model -> {0}" -f $_.Name) -ForegroundColor Green; Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue }
+    }
+  }
+}
+
+# Download an AI model (only if one isn't already present after the rescue above). -DownloadModel <name>
+# streams it into models_dir (absolute path, so Python lands it in the right place) with a progress bar.
+$haveModel = @(Get-ChildItem $modelsDir -Filter *.gguf -ErrorAction SilentlyContinue).Count -gt 0
+if ($DownloadModel -and -not $haveModel) {
   $prevEAP = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   try {
@@ -112,20 +133,24 @@ if ($DownloadModel) {
     Invoke-WebRequest "https://raw.githubusercontent.com/PapaKoftes/Layla/master/installer/get_model.py" -OutFile $gm -UseBasicParsing
     Write-Host ("Downloading model '{0}' (this can take a while)..." -f $DownloadModel) -ForegroundColor Cyan
     & $Python $gm $agent $DownloadModel $modelsDir
-    if ($LASTEXITCODE -eq 0) {
-      # Point the config at the file we just fetched.
-      $cfg2 = if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
-      $fn = (Get-ChildItem $modelsDir -Filter *.gguf -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1).Name
-      if ($fn) {
-        $cfg2 | Add-Member -NotePropertyName model_filename -NotePropertyValue $fn -Force
-        ($cfg2 | ConvertTo-Json -Depth 30) | Set-Content -Path $cfgPath -Encoding UTF8
-        $configChanged = $true
-        Write-Host ("Model   : set active model -> {0}" -f $fn) -ForegroundColor Green
-      }
-    } else { Write-Host "  (model download failed - try a different -DownloadModel name, or the Models page)" -ForegroundColor DarkYellow }
+    if ($LASTEXITCODE -ne 0) { Write-Host "  (model download failed - try a different -DownloadModel name, or the Models page)" -ForegroundColor DarkYellow }
   } catch { Write-Host "  (model download step skipped: $_)" -ForegroundColor DarkYellow }
   finally { $ErrorActionPreference = $prevEAP }
 }
+
+# Activate whatever model is now present (downloaded OR rescued) if the config isn't already pointing at
+# a file that exists. This is what clears "Service temporarily unavailable".
+try {
+  $fn = (Get-ChildItem $modelsDir -Filter *.gguf -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1).Name
+  $curModel = if ($cfg.PSObject.Properties.Name -contains 'model_filename') { [string]$cfg.model_filename } else { '' }
+  if ($fn -and ($curModel -ne $fn -or -not (Test-Path (Join-Path $modelsDir $curModel)))) {
+    $cfg2 = if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+    $cfg2 | Add-Member -NotePropertyName model_filename -NotePropertyValue $fn -Force
+    ($cfg2 | ConvertTo-Json -Depth 30) | Set-Content -Path $cfgPath -Encoding UTF8
+    $configChanged = $true
+    Write-Host ("Model   : active -> {0}" -f $fn) -ForegroundColor Green
+  } elseif ($fn) { Write-Host ("Model   : {0}" -f $fn) }
+} catch { }
 
 # The fix: explicit sys.path bootstrap the isolated embeddable Python DOES honor. Written to a small
 # .py file (not passed via `-c`) so no shell quoting can mangle it.

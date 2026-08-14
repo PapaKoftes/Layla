@@ -9,9 +9,9 @@ import json
 import sys
 from pathlib import Path
 
-agent = Path(sys.argv[1])
+agent = Path(sys.argv[1]).expanduser()
 name = sys.argv[2]
-models_dir = Path(sys.argv[3])
+models_dir = Path(sys.argv[3]).expanduser()  # ~ must expand here too (Python does not do it implicitly)
 sys.path.insert(0, str(agent))
 
 from install.model_downloader import download_model  # noqa: E402
