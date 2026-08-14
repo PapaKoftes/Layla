@@ -80,6 +80,24 @@ $logDir = Join-Path $env:LAYLA_DATA_DIR "logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir "launch.log"
 
+# Models folder fix: a packaged install downloads models into <install>\models, which under Program Files
+# needs admin -> the Models page download fails and you get "Service temporarily unavailable" (no model).
+# Point models_dir at the writable per-user data dir so downloads work with no admin.
+$modelsDir = Join-Path $env:LAYLA_DATA_DIR "models"
+New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
+$cfgPath = Join-Path $env:LAYLA_DATA_DIR "runtime_config.json"
+$configChanged = $false
+try {
+  $cfg = if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+  $cur = if ($cfg.PSObject.Properties.Name -contains 'models_dir') { [string]$cfg.models_dir } else { '' }
+  if (-not $cur -or $cur -like "*Program Files*" -or $cur -like "$root*") {
+    $cfg | Add-Member -NotePropertyName models_dir -NotePropertyValue $modelsDir -Force
+    ($cfg | ConvertTo-Json -Depth 30) | Set-Content -Path $cfgPath -Encoding UTF8
+    $configChanged = $true
+    Write-Host "Models  : set to writable folder -> $modelsDir" -ForegroundColor Green
+  } else { Write-Host "Models  : using $cur" }
+} catch { Write-Host "  (models_dir config step skipped: $_)" -ForegroundColor DarkYellow }
+
 # The fix: explicit sys.path bootstrap the isolated embeddable Python DOES honor. Written to a small
 # .py file (not passed via `-c`) so no shell quoting can mangle it.
 $bootPy = Join-Path $env:LAYLA_DATA_DIR "hotfix_engine.py"
@@ -92,6 +110,17 @@ uvicorn.run("main:app", host="$BindHost", port=$Port)
 
 # Already running?
 function Test-Health { try { (Invoke-WebRequest "http://${BindHost}:$Port/health" -TimeoutSec 2 -UseBasicParsing).StatusCode -eq 200 } catch { $false } }
+# If the config changed, a running engine still holds the OLD config -> restart it so models_dir takes
+# effect. Kill whatever is listening on the port (the engine), then relaunch below.
+if ($configChanged -and (Test-Health)) {
+  Write-Host "Restarting Layla to apply the fix..." -ForegroundColor Cyan
+  try {
+    Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty OwningProcess -Unique |
+      ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+  } catch { }
+  Start-Sleep -Seconds 2
+}
 if (Test-Health) {
   Write-Host "Layla is already running." -ForegroundColor Green
 } else {
