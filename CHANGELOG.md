@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 
+## [1.8.0] — 2026-08-14
+
+### Added — self-update & self-repair (so a launcher bug never needs a 410 MB reinstall again)
+- **Thin launcher.** `layla.exe` is now a tiny, stable bootstrapper (`launcher/layla_boot.py`) that runs the *external* launcher script (`launcher/layla_launcher.py`, shipped as a plain file). Launcher fixes become file swaps, not exe rebuilds. It prefers a per-user override copy over the shipped one and is crash-proof (never writes to a None stderr; always logs + shows a dialog pointing at Repair).
+- **In-app updater, turned on and hardened.** `github_repo` now defaults to `PapaKoftes/Layla`, so `GET /update/check` works out of the box. Applying an update (`POST /update/apply`) now (1) **verifies the download against the release `SHA256SUMS.txt` and refuses anything it can't verify**, and (2) on a packaged install writes into a per-user override dir (`%LOCALAPPDATA%/Layla/app_override/`) — **no admin, Program Files stays pristine** — and stages an updated launcher there too. Releases now publish a small code-only `update-bundle-<ver>.zip` (agent + launcher + knowledge + personalities) so updates are a few MB, not the full installer.
+- **Repair Layla.** `installer/Fix-Layla.ps1` ships in the installer with a "Repair Layla" Start-menu entry (and works standalone): it bypasses a broken launcher and starts the engine with the bundled Python. One-click recovery.
+
 ## [1.7.6] — 2026-08-14
 
 ### Fixed

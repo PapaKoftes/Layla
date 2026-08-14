@@ -1,16 +1,20 @@
 # PyInstaller spec — run from repo root after `pip install pyinstaller`:
 #   pyinstaller launcher/layla.spec
 #
-# Output: dist/layla.exe — copy next to ``agent/`` and optional ``python/`` on end-user machines.
+# Output: dist/layla.exe — a THIN bootstrapper (layla_boot.py). It runs the external, updatable
+# launcher script (launcher/layla_launcher.py, shipped as a plain file in the payload) with the bundled
+# Python. Keeping the launcher OUT of the frozen exe is deliberate: launcher fixes/updates become file
+# swaps (in-app updater / Repair), never a 410 MB reinstall. Copy next to ``agent/``, ``launcher/`` and
+# ``python/`` on end-user machines.
 
 block_cipher = None
 
 a = Analysis(
-    ["layla_launcher.py"],
+    ["layla_boot.py"],
     pathex=["launcher"],
     binaries=[],
     datas=[],
-    hiddenimports=["pystray", "PIL", "PIL.Image"],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

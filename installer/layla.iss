@@ -37,6 +37,9 @@ Source: "payload\Layla\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\layla.exe"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\layla.exe"; Tasks: desktopicon
+; Repair: bypasses the frozen launcher and starts the engine with the bundled Python (the 1.7.5 boot-crash
+; safety net). Also the manual way to recover if an update goes wrong.
+Name: "{autoprograms}\Repair {#MyAppName}"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\Fix-Layla.ps1"""; IconFilename: "{app}\layla.exe"
 
 [Run]
 Filename: "{app}\layla.exe"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent

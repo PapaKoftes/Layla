@@ -105,6 +105,14 @@ try {
 }
 finally { Pop-Location }
 
+# Ship the launcher as a PLAIN, updatable file (the thin layla.exe runs it). Keeping it out of the frozen
+# exe is what lets the in-app updater / Repair fix launcher bugs with a file swap instead of a reinstall.
+Write-Host "==> Stage external launcher script + Repair tool into payload"
+$payLauncher = Join-Path $Payload "launcher"
+$null = New-Item -ItemType Directory -Force -Path $payLauncher
+Copy-Item (Join-Path $Root "launcher\layla_launcher.py") (Join-Path $payLauncher "layla_launcher.py") -Force
+Copy-Item (Join-Path $Root "installer\Fix-Layla.ps1") (Join-Path $Payload "Fix-Layla.ps1") -Force
+
 # Embedded Python (zero local Python prereq for end users).
 # Default: ON. Set env LAYLA_BUNDLE_EMBEDDED_PYTHON=0 to skip.
 if ($env:LAYLA_BUNDLE_EMBEDDED_PYTHON -ne "0") {
@@ -178,16 +186,32 @@ if (-not $ver) { $ver = "0.0.0" }
 
 try {
   $outDir = Join-Path $PSScriptRoot "output"
-  if (Test-Path $outDir) {
-    $setup = Join-Path $outDir ("Layla-Setup-" + $ver + ".exe")
-    if (Test-Path $setup) {
-      $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
-      $sumFile = Join-Path $outDir "SHA256SUMS.txt"
-      ($hash + "  " + (Split-Path -Leaf $setup)) | Set-Content -Path $sumFile -Encoding ASCII
-      Write-Host "==> SHA256: $hash"
-    }
+  $null = New-Item -ItemType Directory -Force -Path $outDir
+  $sumLines = @()
+
+  # Lightweight CODE-ONLY update bundle for the in-app updater (agent + launcher + knowledge +
+  # personalities), exported from git HEAD (never the working tree, so no operator state leaks). A few MB
+  # vs the ~400 MB installer: the updater swaps code without re-downloading embedded Python + wheels.
+  Write-Host "==> Build update bundle (code-only, for in-app updater)"
+  Push-Location $Root
+  try {
+    $bundle = Join-Path $outDir ("update-bundle-" + $ver + ".zip")
+    & git archive --format=zip -o $bundle HEAD agent launcher knowledge personalities
+    if ($LASTEXITCODE -ne 0) { throw "git archive (update bundle) failed" }
+    $bhash = (Get-FileHash -Algorithm SHA256 $bundle).Hash.ToLower()
+    $sumLines += ($bhash + "  " + (Split-Path -Leaf $bundle))
+    Write-Host ("    update bundle SHA256: {0}" -f $bhash)
+  } finally { Pop-Location }
+
+  $setup = Join-Path $outDir ("Layla-Setup-" + $ver + ".exe")
+  if (Test-Path $setup) {
+    $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
+    $sumLines += ($hash + "  " + (Split-Path -Leaf $setup))
+    Write-Host "==> SHA256: $hash"
   }
+  $sumFile = Join-Path $outDir "SHA256SUMS.txt"
+  $sumLines | Set-Content -Path $sumFile -Encoding ASCII
 } catch {
-  Write-Warning "Checksum generation failed: $_"
+  Write-Warning "Checksum / bundle generation failed: $_"
 }
 Write-Host "Done."

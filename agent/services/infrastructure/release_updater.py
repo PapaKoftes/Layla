@@ -41,6 +41,38 @@ def fetch_latest_release(repo: str) -> dict | None:
         return None
 
 
+def _verify_zip_sha256(zpath: Path, asset_name: str, assets: list) -> dict:
+    """Verify a downloaded asset against the release's SHA256SUMS.txt. Refuses (ok=False) if the release
+    does not publish a checksum for this asset — an unverifiable code update must not be applied."""
+    import hashlib
+
+    sums = next((a for a in (assets or []) if str(a.get("name")) == "SHA256SUMS.txt"), None)
+    if not sums or not sums.get("browser_download_url"):
+        return {"ok": False, "error": "no_sha256sums_published"}
+    try:
+        req = Request(str(sums["browser_download_url"]), headers={"User-Agent": "layla-local-updater"})
+        with urlopen(req, timeout=60) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        return {"ok": False, "error": f"sha256sums_fetch_failed: {e}"}
+    expected = None
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[-1].lstrip("*") == asset_name:
+            expected = parts[0].lower()
+            break
+    if not expected:
+        return {"ok": False, "error": f"no_sha256_for_{asset_name}"}
+    h = hashlib.sha256()
+    with open(zpath, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    got = h.hexdigest().lower()
+    if got != expected:
+        return {"ok": False, "error": f"checksum_mismatch: expected {expected[:12]}… got {got[:12]}…"}
+    return {"ok": True}
+
+
 def _pick_zip_asset(assets: list, *, preferred_version: str = "") -> dict | None:
     """
     Pick the best ZIP asset from a GitHub release.
@@ -112,16 +144,24 @@ def apply_release_update() -> dict:
     if not asset or not asset.get("browser_download_url"):
         return {"ok": False, "error": "no_zip_asset_in_release"}
 
-    dest_agent = install_root() / "agent"
-    try:
-        dest_agent = dest_agent.resolve()
-    except OSError:
-        pass
-    if not dest_agent.is_dir():
-        return {"ok": False, "error": "agent_dir_not_found"}
+    data_dir = rs.resolve_layla_data_dir()
+    # No-admin updates: in a packaged install, write into the per-user override tree the launcher prefers
+    # over the (admin-only) Program Files copy. Dev installs still update the working tree in place.
+    if is_installed_mode() and data_dir:
+        dest_agent = (data_dir / "app_override" / "agent")
+        dest_agent.mkdir(parents=True, exist_ok=True)
+        override_launcher = data_dir / "app_override" / "launcher"
+    else:
+        dest_agent = install_root() / "agent"
+        override_launcher = None
+        try:
+            dest_agent = dest_agent.resolve()
+        except OSError:
+            pass
+        if not dest_agent.is_dir():
+            return {"ok": False, "error": "agent_dir_not_found"}
 
     url = str(asset["browser_download_url"])
-    data_dir = rs.resolve_layla_data_dir()
     staging_parent = (data_dir or dest_agent.parent) / "updates"
     staging_parent.mkdir(parents=True, exist_ok=True)
     zpath = staging_parent / "layla_release_download.zip"
@@ -132,6 +172,16 @@ def apply_release_update() -> dict:
             shutil.copyfileobj(resp, out)
     except Exception as e:
         return {"ok": False, "error": f"download_failed: {e}"}
+
+    # Verify the download against the release's SHA256SUMS.txt BEFORE trusting a byte of it. Refuse to
+    # apply an update we cannot verify — this is code that is about to run on the user's machine.
+    verify = _verify_zip_sha256(zpath, str(asset.get("name") or ""), payload.get("assets") or [])
+    if not verify.get("ok"):
+        try:
+            zpath.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return {"ok": False, "error": verify.get("error", "checksum_verification_failed")}
 
     try:
         with tempfile.TemporaryDirectory() as td:
@@ -179,6 +229,17 @@ def apply_release_update() -> dict:
                         shutil.copy2(Path(root) / fn, target_dir / fn)
                     except PermissionError as pe:
                         return {"ok": False, "error": f"permission_denied: {pe}", "hint": "Run Layla as Administrator or re-run the installer update."}
+
+            # Also stage an updated launcher into the override so the thin layla.exe picks it up on next
+            # start (this is how a launcher bug gets fixed by an update instead of a reinstall).
+            if override_launcher is not None:
+                shipped_launcher = new_agent.parent / "launcher" / "layla_launcher.py"
+                if shipped_launcher.is_file():
+                    try:
+                        override_launcher.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(shipped_launcher, override_launcher / "layla_launcher.py")
+                    except Exception as _le:
+                        logger.debug("launcher override stage skipped: %s", _le)
     finally:
         try:
             zpath.unlink(missing_ok=True)

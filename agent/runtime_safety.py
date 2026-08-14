@@ -726,7 +726,7 @@ def load_config() -> dict:
             "enable_self_reflection": True,
             "self_reflection_min_length": 200,
             "git_auto_commit": False,
-            "github_repo": "",
+            "github_repo": "PapaKoftes/Layla",
             "research_max_tool_calls": 20,
             "research_max_runtime_seconds": 1800,
             "safe_mode": True,

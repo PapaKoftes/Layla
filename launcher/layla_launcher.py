@@ -134,6 +134,16 @@ def _pick_python(install_root: Path) -> Path | None:
     return Path(sys.executable).resolve()
 
 
+def _resolve_agent_dir(install_root: Path, data: Path) -> Path:
+    """Agent tree to run. Prefer a per-user override (written by the in-app updater / Repair — no admin
+    needed, Program Files stays pristine) over the shipped copy. Falls back to the shipped copy so a fresh
+    install with no override still works."""
+    override = data / "app_override" / "agent"
+    if (override / "main.py").is_file():
+        return override
+    return install_root / "agent"
+
+
 def _health_ok() -> bool:
     # Uses global HEALTH_URL, set in main() after arg parsing.
     try:
@@ -166,7 +176,7 @@ def main() -> int:
     data_dir = _ensure_data_dir()
     _seed_runtime_config(install_root, data_dir)
 
-    agent_dir = install_root / "agent"
+    agent_dir = _resolve_agent_dir(install_root, data_dir)
     if not agent_dir.is_dir():
         _fatal(
             "Layla files missing",

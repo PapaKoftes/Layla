@@ -48,6 +48,7 @@ jobs:
           name: layla-windows-installer
           path: |
             installer/output/*.exe
+            installer/output/update-bundle-*.zip
             installer/output/SHA256SUMS.txt
 
   publish-release:
@@ -74,6 +75,7 @@ jobs:
           fail_on_unmatched_files: false
           files: |
             dist-release/*.exe
+            dist-release/update-bundle-*.zip
             dist-release/SHA256SUMS.txt
       # NOTE: Linux/macOS ship via the source installers (install.sh) — see INSTALL.md.
       # A packaged Linux/macOS build is a future addition; the Windows installer + the
