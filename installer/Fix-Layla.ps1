@@ -60,6 +60,19 @@ Write-Host "Install : $root"
 Write-Host "Python  : $Python"
 Write-Host "Engine  : http://${BindHost}:$Port"
 
+# Embedder fix (the 1.7.7 change): a fresh 1.7.x install is missing model2vec, so semantic memory falls
+# back to a broken transformers path and degrades to keyword-only. Install it into THIS install's Python
+# so memory works. Best-effort + idempotent (skips instantly if already present); needs a network once.
+try {
+  & $Python -c "import model2vec" 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "Fixing semantic memory (installing model2vec)..." -ForegroundColor Cyan
+    & $Python -m pip install "model2vec>=0.5,<1" --quiet --disable-pip-version-check --no-warn-script-location
+    if ($LASTEXITCODE -eq 0) { Write-Host "  memory fix applied." -ForegroundColor Green }
+    else { Write-Host "  (model2vec install skipped - check your connection; the app still runs)" -ForegroundColor DarkYellow }
+  } else { Write-Host "Memory  : model2vec already present." }
+} catch { Write-Host "  (model2vec step skipped: $_)" -ForegroundColor DarkYellow }
+
 # Per-user data dir (same default the app uses); never needs admin.
 if (-not $env:LAYLA_DATA_DIR) { $env:LAYLA_DATA_DIR = Join-Path $env:LOCALAPPDATA "Layla" }
 $env:LAYLA_INSTALL_ROOT = $root
