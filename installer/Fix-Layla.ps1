@@ -21,6 +21,7 @@ param(
   [string]$Python = "",
   [int]$Port = 8000,
   [string]$BindHost = "127.0.0.1",
+  [string]$DownloadModel = "",
   [switch]$NoShortcut,
   [switch]$NoBrowser
 )
@@ -63,15 +64,17 @@ Write-Host "Engine  : http://${BindHost}:$Port"
 # Embedder fix (the 1.7.7 change): a fresh 1.7.x install is missing model2vec, so semantic memory falls
 # back to a broken transformers path and degrades to keyword-only. Install it into THIS install's Python
 # so memory works. Best-effort + idempotent (skips instantly if already present); needs a network once.
+# EAP=Continue here: native tools (python/pip) write progress+warnings to stderr, and under the script's
+# default Stop that gets turned into a terminating error (PS 5.1 native-stderr trap), which is what made
+# this step "skip with a Traceback". pip install is idempotent, so just run it and read the exit code.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 try {
-  & $Python -c "import model2vec" 2>$null
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "Fixing semantic memory (installing model2vec)..." -ForegroundColor Cyan
-    & $Python -m pip install "model2vec>=0.5,<1" --quiet --disable-pip-version-check --no-warn-script-location
-    if ($LASTEXITCODE -eq 0) { Write-Host "  memory fix applied." -ForegroundColor Green }
-    else { Write-Host "  (model2vec install skipped - check your connection; the app still runs)" -ForegroundColor DarkYellow }
-  } else { Write-Host "Memory  : model2vec already present." }
-} catch { Write-Host "  (model2vec step skipped: $_)" -ForegroundColor DarkYellow }
+  Write-Host "Ensuring semantic memory (model2vec)..." -ForegroundColor Cyan
+  & $Python -m pip install "model2vec>=0.5,<1" --quiet --disable-pip-version-check --no-warn-script-location 2>&1 | Out-Null
+  if ($LASTEXITCODE -eq 0) { Write-Host "Memory  : model2vec ready." -ForegroundColor Green }
+  else { Write-Host "  (model2vec install skipped - check connection; the app still runs)" -ForegroundColor DarkYellow }
+} finally { $ErrorActionPreference = $prevEAP }
 
 # Per-user data dir (same default the app uses); never needs admin.
 if (-not $env:LAYLA_DATA_DIR) { $env:LAYLA_DATA_DIR = Join-Path $env:LOCALAPPDATA "Layla" }
@@ -95,8 +98,34 @@ try {
     ($cfg | ConvertTo-Json -Depth 30) | Set-Content -Path $cfgPath -Encoding UTF8
     $configChanged = $true
     Write-Host "Models  : set to writable folder -> $modelsDir" -ForegroundColor Green
-  } else { Write-Host "Models  : using $cur" }
+  } else { Write-Host "Models  : using $cur"; $modelsDir = $cur }
 } catch { Write-Host "  (models_dir config step skipped: $_)" -ForegroundColor DarkYellow }
+
+# Optional: download an AI model directly (so you don't have to use the Models page). -DownloadModel <name>
+# fetches a small get_model.py helper and streams the model into models_dir with a progress bar, then sets
+# it as the active model. Without a model the app answers "Service temporarily unavailable".
+if ($DownloadModel) {
+  $prevEAP = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $gm = Join-Path $env:TEMP "get_model.py"
+    Invoke-WebRequest "https://raw.githubusercontent.com/PapaKoftes/Layla/master/installer/get_model.py" -OutFile $gm -UseBasicParsing
+    Write-Host ("Downloading model '{0}' (this can take a while)..." -f $DownloadModel) -ForegroundColor Cyan
+    & $Python $gm $agent $DownloadModel $modelsDir
+    if ($LASTEXITCODE -eq 0) {
+      # Point the config at the file we just fetched.
+      $cfg2 = if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+      $fn = (Get-ChildItem $modelsDir -Filter *.gguf -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1).Name
+      if ($fn) {
+        $cfg2 | Add-Member -NotePropertyName model_filename -NotePropertyValue $fn -Force
+        ($cfg2 | ConvertTo-Json -Depth 30) | Set-Content -Path $cfgPath -Encoding UTF8
+        $configChanged = $true
+        Write-Host ("Model   : set active model -> {0}" -f $fn) -ForegroundColor Green
+      }
+    } else { Write-Host "  (model download failed - try a different -DownloadModel name, or the Models page)" -ForegroundColor DarkYellow }
+  } catch { Write-Host "  (model download step skipped: $_)" -ForegroundColor DarkYellow }
+  finally { $ErrorActionPreference = $prevEAP }
+}
 
 # The fix: explicit sys.path bootstrap the isolated embeddable Python DOES honor. Written to a small
 # .py file (not passed via `-c`) so no shell quoting can mangle it.
