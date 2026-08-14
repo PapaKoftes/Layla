@@ -24,8 +24,8 @@ $ErrorActionPreference = "Stop"
 if (-not $PayloadDir) { $PayloadDir = Join-Path $PSScriptRoot "payload\Layla" }
 $py = Join-Path $PayloadDir "python\python.exe"
 $agent = Join-Path $PayloadDir "agent"
-$launcher = Join-Path $PayloadDir "launcher\layla_launcher.py"
-foreach ($p in @($py, (Join-Path $agent "main.py"))) {
+$exe = Join-Path $PayloadDir "layla.exe"
+foreach ($p in @($py, $exe, (Join-Path $agent "main.py"))) {
   if (-not (Test-Path $p)) { Write-Error ("packaged_smoke: missing {0} - payload is incomplete" -f $p); exit 2 }
 }
 $data = Join-Path $env:TEMP ("layla_smoke_" + [System.Guid]::NewGuid().ToString("N"))
@@ -42,12 +42,13 @@ Write-Host "==> smoke: embedder loads in packaged python"
 if ($LASTEXITCODE -ne 0) { Write-Host "   FAIL: embedder did not load (degraded semantic memory would ship)"; $fail = 1 }
 else { Write-Host "   OK" }
 
-# Check 1: the launcher actually starts the engine and /health is 200.
-Write-Host ("==> smoke: launcher boots the engine (/health 200 on port {0})" -f $Port)
-$out = Join-Path $data "launcher_out.txt"
-$proc = Start-Process -FilePath $py -ArgumentList @("`"$launcher`"", "--port", "$Port", "--no-tray") `
-          -WorkingDirectory $agent -RedirectStandardOutput $out -RedirectStandardError "$out.err" `
-          -PassThru -WindowStyle Hidden
+# Check 1: the REAL frozen layla.exe (the shipped launcher) starts the engine and /health is 200.
+# This exercises exactly what a user double-clicks — the frozen exe + embeddable Python together, which is
+# where the 1.7.5 boot crash lived. (layla.exe is windowed/console=False, so it writes no stdout; the
+# launcher tees the engine to launch.log, which we read on failure.)
+Write-Host ("==> smoke: layla.exe boots the engine (/health 200 on port {0})" -f $Port)
+$proc = Start-Process -FilePath $exe -ArgumentList @("--port", "$Port", "--no-tray") `
+          -WorkingDirectory $PayloadDir -PassThru -WindowStyle Hidden
 $healthy = $false
 for ($i = 0; $i -lt 120; $i++) {
   Start-Sleep -Seconds 1
@@ -58,9 +59,8 @@ for ($i = 0; $i -lt 120; $i++) {
 }
 if (-not $healthy) {
   Write-Host "   FAIL: engine never became healthy"
-  if (Test-Path "$out.err") { Get-Content "$out.err" -Tail 25 }
   $log = Join-Path $data "logs\launch.log"
-  if (Test-Path $log) { Write-Host "--- launch.log ---"; Get-Content $log -Tail 25 }
+  if (Test-Path $log) { Write-Host "--- launch.log ---"; Get-Content $log -Tail 30 }
   $fail = 1
 } else { Write-Host "   OK" }
 
