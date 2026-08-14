@@ -28,6 +28,12 @@ pydantic>=2.0
 uvicorn[standard]>=0.32,<1
 llama-cpp-python>=0.3.1,<0.4
 sentence-transformers>=3.0,<4
+# model2vec is the DEFAULT embedder (static, no torch, ~30 MB) and the reason semantic memory works on a
+# fresh install: without it _get_embedder falls through to sentence-transformers, which on a fresh box
+# pulls the latest `transformers` and hits `ImportError: is_torch_npu_available` (ST 3.4 vs transformers
+# 4.57+), leaving every install with DEGRADED keyword-only memory. Keeping it here makes the fast, torch-
+# free path the one that actually runs.
+model2vec>=0.5,<1
 numpy>=1.24,<3
 psutil>=5.9
 cryptography>=42               # Fernet cipher backing encryption-at-rest (default-ON high-risk tier).
