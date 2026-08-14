@@ -14,7 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 
-## [1.7.5] — unreleased
+## [1.7.6] — 2026-08-14
+
+### Fixed
+- **Packaged app could not start (boot crash).** With the bundled embeddable Python, the launcher ran the engine as `python -m uvicorn main:app` and relied on `PYTHONPATH`/cwd to import `main` — but an embeddable Python runs *isolated* (a `python*._pth` file), so it ignores `PYTHONPATH` **and** `-m` does not add the working dir. `main:app` was unimportable, the engine died before `/health`, and the app failed to launch. The launcher now starts uvicorn via an explicit `sys.path` bootstrap (`python -c "sys.path.insert(0, agent_dir); uvicorn.run('main:app', …)"`), verified against a real embeddable Python.
+- **Startup error handler double-faulted and hid the cause.** `layla.exe` is built `console=False`, so `sys.stderr` is `None`; the fatal-error handler wrote to it first and raised `AttributeError`, which both masked the real error and skipped writing `launch.log` / showing the MessageBox. The handler is now crash-proof and always records the real reason.
+- Launcher never uses the frozen `layla.exe` as the engine interpreter (that produced `layla.exe -c …`, re-running the launcher); a missing bundled runtime now reports a clear "reinstall" message instead of a silent boot failure.
+
+## [1.7.5] — 2026-08-13
 
 ### Added
 - **Knowledge packs + presets.** Curated domain knowledge under `knowledge/packs/` (core, fabrication, embedded, engineering, research, reasoning, psychology). Pick a bundle via `knowledge_preset` (companion / maker / engineer / researcher / everything) or an explicit `knowledge_packs` list; `core` is always on and your loose `knowledge/` files are never filtered.

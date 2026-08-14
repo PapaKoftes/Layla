@@ -17,8 +17,8 @@ Optional tray menu requires ``pystray`` and ``pillow``; otherwise the process bl
 """
 from __future__ import annotations
 
-import atexit
 import argparse
+import atexit
 import os
 import shutil
 import signal
@@ -53,7 +53,14 @@ def _fatal(title: str, message: str) -> None:
     so the user actually sees why Layla didn't start. Never raises.
     Set ``LAYLA_NO_DIALOG=1`` to suppress the popup (used by automated tests).
     """
-    sys.stderr.write(message + "\n")
+    # ``console=False`` means sys.stderr is None in the packaged exe — writing to it raises
+    # AttributeError and, because _fatal IS the error handler, that used to double-fault and hide the
+    # real cause (plus skip the log + MessageBox below). Guard every side effect so _fatal cannot raise.
+    try:
+        if sys.stderr is not None:
+            sys.stderr.write(message + "\n")
+    except Exception:
+        pass
     log: Path | None = _launch_log_path()
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
@@ -114,10 +121,16 @@ def _seed_runtime_config(install_root: Path, data: Path) -> None:
                 pass
 
 
-def _pick_python(install_root: Path) -> Path:
+def _pick_python(install_root: Path) -> Path | None:
+    """Interpreter to run the engine with. Prefer the bundled embedded Python; else the current
+    interpreter — but NEVER the frozen launcher exe itself (``layla.exe -c ...`` would just re-run the
+    launcher and exit, which is the classic "engine died before health" boot failure). Returns None when
+    no real interpreter is available so the caller can report a clear "reinstall" error."""
     embedded = install_root / "python" / "python.exe"
     if embedded.is_file():
         return embedded
+    if getattr(sys, "frozen", False):
+        return None
     return Path(sys.executable).resolve()
 
 
@@ -173,7 +186,28 @@ def main() -> int:
         return 0
 
     py = _pick_python(install_root)
-    cmd = [str(py), "-m", "uvicorn", "main:app", "--host", HOST, "--port", str(PORT)]
+    if py is None:
+        _fatal(
+            "Layla runtime missing",
+            "Layla's bundled Python runtime was not found next to the app:\n"
+            f"{install_root / 'python' / 'python.exe'}\n\n"
+            "The install is incomplete — please reinstall Layla.",
+        )
+        return 2
+    # Start uvicorn via an explicit sys.path bootstrap instead of `-m uvicorn`. The bundled *embeddable*
+    # Python ignores PYTHONPATH (a python*._pth file puts it in isolated mode), so `main:app` would be
+    # unimportable there; inserting agent_dir into sys.path in-process is honored by every interpreter.
+    # Values pass through the environment (not string-formatted into the code) so a path with quotes or
+    # trailing backslashes can never break the bootstrap.
+    env["LAYLA_ENGINE_AGENT_DIR"] = str(agent_dir)
+    env["LAYLA_ENGINE_HOST"] = HOST
+    env["LAYLA_ENGINE_PORT"] = str(PORT)
+    _boot = (
+        "import os, sys; sys.path.insert(0, os.environ['LAYLA_ENGINE_AGENT_DIR']); "
+        "import uvicorn; uvicorn.run('main:app', host=os.environ['LAYLA_ENGINE_HOST'], "
+        "port=int(os.environ['LAYLA_ENGINE_PORT']))"
+    )
+    cmd = [str(py), "-c", _boot]
     proc: subprocess.Popen | None = None
 
     def _terminate_proc() -> None:
