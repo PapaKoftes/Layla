@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 
+## [1.7.7] — 2026-08-14
+
+### Fixed — fresh installs now actually work end-to-end (and can't silently ship broken again)
+- **Semantic memory was degraded on every fresh install.** `model2vec` (the default, torch-free embedder) was in `pyproject.toml` but missing from `agent/requirements.txt` — the list the installer's embedded Python actually installs. Without it, embedding fell through to `sentence-transformers`, which on a fresh box pulls the latest `transformers` and dies with `ImportError: is_torch_npu_available`, leaving keyword-only memory. Added `model2vec>=0.5,<1` to requirements. Verified in a real embeddable-Python payload: embedder loads `potion-base-8M`, no torch.
+- **Universal guard so this class of bug can't ship again:** a new **packaged-smoke gate** (`installer/packaged_smoke.ps1`) runs in the release build against the *actual* built payload (embeddable Python + frozen launcher) and fails the release unless (1) the launcher boots the engine to `/health` 200 and (2) the embedder loads. CI tests source, which always worked; these were packaging-only failures — this is the check that catches them. The embedded-Python bundle also now **fails the build loudly** if provisioning is incomplete, instead of shipping a dep-less runtime.
+
 ## [1.7.6] — 2026-08-14
 
 ### Fixed
