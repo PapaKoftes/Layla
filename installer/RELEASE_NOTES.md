@@ -8,7 +8,7 @@ Layla is a private AI companion that runs entirely on your own computer — no a
 
 ### Easiest — one-click Windows installer (recommended)
 
-1. Under **Assets** below, download **`Layla-Setup-1.7.0.exe`**.
+1. Under **Assets** below, download **`Layla-Setup-1.7.5.exe`**.
 2. **Double-click it.** No Python, no admin, no developer tools — everything Layla needs (including its own Python) is inside the installer.
 3. When it finishes, click **Launch Layla**. She opens in your browser at **http://127.0.0.1:8000**.
 
@@ -29,7 +29,7 @@ It sets everything up and picks a model automatically. When it finishes, Layla o
 
 ### Lo más fácil — instalador de Windows con un clic (recomendado)
 
-1. En **Assets** aquí abajo, descarga **`Layla-Setup-1.7.0.exe`**.
+1. En **Assets** aquí abajo, descarga **`Layla-Setup-1.7.5.exe`**.
 2. **Haz doble clic.** Sin Python, sin permisos de administrador, sin herramientas de programación — todo lo que Layla necesita (incluido su propio Python) va dentro del instalador.
 3. Al terminar, haz clic en **Launch Layla**. Se abre en tu navegador en **http://127.0.0.1:8000**.
 
@@ -48,6 +48,6 @@ Instala todo y elige un modelo automáticamente. Al terminar, Layla se abre en *
 
 **Heads up / Aviso:** Windows SmartScreen or antivirus may warn about a new app — choose *"More info → Run anyway."* · *Windows SmartScreen o el antivirus pueden advertir sobre una app nueva — elige "Más información → Ejecutar de todas formas."*
 
-**Verify the download / Verifica la descarga:** the `SHA256SUMS.txt` asset lists the exact checksum of `Layla-Setup-1.7.0.exe`. On Windows: `certutil -hashfile Layla-Setup-1.7.0.exe SHA256`.
+**Verify the download / Verifica la descarga:** the `SHA256SUMS.txt` asset lists the exact checksum of `Layla-Setup-1.7.5.exe`. On Windows: `certutil -hashfile Layla-Setup-1.7.5.exe SHA256`.
 
 **Full Changelog:** https://github.com/PapaKoftes/Layla/blob/master/CHANGELOG.md

@@ -5,29 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Release state:** the current code is **1.7.0** (`agent/version.py`), tagged **`v1.7.0`**. The full
-> suite is green (4,473 passing; one known ordering flake that passes in isolation), and a full reliability
-> crash-course (data integrity, crash recovery, security boundaries, migration safety, offline, scale) is
-> recorded below. Prior tags: `v1.5.0`, `v1.0.0`. (The earlier `[2.0.0] — 2026-02-22` entry was a mis-number
-> for the first release and is corrected to `[1.0.0]`, matching the `v1.0.0` tag.)
+> **Release state:** the current code is **1.7.5** (`agent/version.py`), tagged **`v1.7.5`**. The release
+> build runs a packaged-smoke gate (it launches the real installer payload and checks `/health` + the
+> embedder) so a broken installer cannot ship. Prior tags: `v1.7.0`, `v1.5.0`, `v1.0.0`. (The earlier
+> `[2.0.0] — 2026-02-22` entry was a mis-number for the first release and is corrected to `[1.0.0]`,
+> matching the `v1.0.0` tag.)
 
 ---
 
 
-## [1.7.7] — 2026-08-14
-
-### Fixed — fresh installs now actually work end-to-end (and can't silently ship broken again)
-- **Semantic memory was degraded on every fresh install.** `model2vec` (the default, torch-free embedder) was in `pyproject.toml` but missing from `agent/requirements.txt` — the list the installer's embedded Python actually installs. Without it, embedding fell through to `sentence-transformers`, which on a fresh box pulls the latest `transformers` and dies with `ImportError: is_torch_npu_available`, leaving keyword-only memory. Added `model2vec>=0.5,<1` to requirements. Verified in a real embeddable-Python payload: embedder loads `potion-base-8M`, no torch.
-- **Universal guard so this class of bug can't ship again:** a new **packaged-smoke gate** (`installer/packaged_smoke.ps1`) runs in the release build against the *actual* built payload (embeddable Python + frozen launcher) and fails the release unless (1) the launcher boots the engine to `/health` 200 and (2) the embedder loads. CI tests source, which always worked; these were packaging-only failures — this is the check that catches them. The embedded-Python bundle also now **fails the build loudly** if provisioning is incomplete, instead of shipping a dep-less runtime.
-
-## [1.7.6] — 2026-08-14
-
-### Fixed
-- **Packaged app could not start (boot crash).** With the bundled embeddable Python, the launcher ran the engine as `python -m uvicorn main:app` and relied on `PYTHONPATH`/cwd to import `main` — but an embeddable Python runs *isolated* (a `python*._pth` file), so it ignores `PYTHONPATH` **and** `-m` does not add the working dir. `main:app` was unimportable, the engine died before `/health`, and the app failed to launch. The launcher now starts uvicorn via an explicit `sys.path` bootstrap (`python -c "sys.path.insert(0, agent_dir); uvicorn.run('main:app', …)"`), verified against a real embeddable Python.
-- **Startup error handler double-faulted and hid the cause.** `layla.exe` is built `console=False`, so `sys.stderr` is `None`; the fatal-error handler wrote to it first and raised `AttributeError`, which both masked the real error and skipped writing `launch.log` / showing the MessageBox. The handler is now crash-proof and always records the real reason.
-- Launcher never uses the frozen `layla.exe` as the engine interpreter (that produced `layla.exe -c …`, re-running the launcher); a missing bundled runtime now reports a clear "reinstall" message instead of a silent boot failure.
-
-## [1.7.5] — 2026-08-13
+## [1.7.5] — 2026-08-14
 
 ### Added
 - **Knowledge packs + presets.** Curated domain knowledge under `knowledge/packs/` (core, fabrication, embedded, engineering, research, reasoning, psychology). Pick a bundle via `knowledge_preset` (companion / maker / engineer / researcher / everything) or an explicit `knowledge_packs` list; `core` is always on and your loose `knowledge/` files are never filtered.
@@ -35,10 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First-run wizard maps your purpose choice to a starting preset.
 - Config: `knowledge_min_similarity`, `knowledge_preset`, `knowledge_packs`.
 
-### Fixed
-- **Knowledge retrieval now fires for practical questions**, not just "research/explain" phrasing — a maker's "what feeds for MDF?" reaches the fabrication pack. A relevance floor (`knowledge_min_similarity`, default 0.40) keeps chit-chat turns clean. Verified: domain queries retrieve, phatic turns retrieve nothing.
-- Corrected docstrings that claimed knowledge RAG is Chroma-only — it works on the compiler-free fallback store (large KB is searchable on a default install).
+### Fixed — a fresh install now launches, remembers, and answers (all verified against a real packaged build)
+- **Packaged app could not start (boot crash).** With the bundled embeddable Python, the launcher ran the engine as `python -m uvicorn main:app` and relied on `PYTHONPATH`/cwd to import `main` — but an embeddable Python runs *isolated* (a `python*._pth` file), so it ignores `PYTHONPATH` **and** `-m` does not add the working dir. `main:app` was unimportable and the engine died before `/health`. The launcher now starts uvicorn via an explicit `sys.path` bootstrap, verified against a real embeddable Python. The startup error handler is also crash-proof now (`layla.exe` is `console=False`, so `sys.stderr` was `None` and the handler double-faulted, hiding the cause), and the launcher never mistakes the frozen `layla.exe` for a Python interpreter.
+- **Semantic memory was degraded on every fresh install.** `model2vec` (the default, torch-free embedder) was in `pyproject.toml` but missing from `agent/requirements.txt` — the list the installer's embedded Python actually installs. Without it, embedding fell through to `sentence-transformers`, which on a fresh box pulled a newer `transformers` and died with `ImportError: is_torch_npu_available`, leaving keyword-only memory. Added `model2vec>=0.5,<1`; verified in a real embeddable-Python payload (embedder loads `potion-base-8M`, no torch).
+- **"Service temporarily unavailable" with a model already installed.** A `runtime_config.json` written with a UTF-8 BOM made the JSON loader raise and silently fall back to defaults (`model_filename` → `your-model.gguf`), ignoring the real model. The config loader now reads `utf-8-sig`, tolerating a BOM. Regression-tested.
+- **Knowledge retrieval now fires for practical questions**, not just "research/explain" phrasing. A relevance floor (`knowledge_min_similarity`, default 0.40) keeps chit-chat turns clean. Corrected docstrings that claimed knowledge RAG is Chroma-only (it works on the compiler-free fallback store).
 - Context pollution: stale tool count (157 → 204), 13 dead doc links removed, stale planning-doc counts fixed, `services/infrastructure/README.md` added.
+
+### Release safety
+- **Packaged-smoke gate.** The release build now runs the *actual* built payload (embeddable Python + frozen `layla.exe`) and fails the release unless the launcher reaches `/health` 200 **and** the embedder loads — so a non-launching or memory-degraded installer can no longer be published. The embedded-Python bundle also fails the build loudly if provisioning is incomplete, instead of shipping a dep-less runtime.
+- **Repair tool.** `installer/Fix-Layla.ps1` (shipped + a "Repair Layla" Start-menu entry) recovers an install in place without a reinstall.
 
 ## [1.7.0] — 2026-08-06
 
