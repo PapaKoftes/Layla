@@ -351,7 +351,7 @@ def save_config_keys_detailed(updates: dict, *, editable_only: bool = True,
         cfg: dict = {}
         if CONFIG_FILE.exists():
             try:
-                loaded = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                loaded = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
                 if isinstance(loaded, dict):
                     cfg = loaded
             except Exception as e:
@@ -1093,7 +1093,7 @@ def load_config() -> dict:
             if h["ram_gb"] < 8 or h["vram_gb"] < 4:
                 defaults["performance_mode"] = "low"
         try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
             if isinstance(data, dict):
                 defaults.update(data)
                 # Validate/clamp editable numeric+boolean keys so a hand-edited
