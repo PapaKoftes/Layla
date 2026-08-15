@@ -6,7 +6,6 @@ All the fragile bits (JSON edit, ~ expansion, path moves) done in Python where t
   argv[3] = optional catalog model name to DOWNLOAD if none found
 Prints a clear report + 'RESULT ok|no_model_found'. Exit 0 on success, 3 if no model."""
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -67,26 +66,22 @@ if not ggufs:
     print("RESULT no_model_found")
     sys.exit(3)
 
-# 3) Pick the largest (the real model, not a stub) and make sure it lives in the writable models dir.
+# 3) Pick the largest (the real model, not a stub). Point the config at wherever it ALREADY is — no move,
+#    no redownload.
 best = max(ggufs, key=lambda g: g.stat().st_size)
-dest = models_dir / best.name
-try:
-    if best.resolve() != dest.resolve():
-        print(f"Moving model -> {dest}")
-        shutil.move(str(best), str(dest))
-    else:
-        dest = best
-except Exception as e:
-    print("move failed, using in place:", e)
-    dest = best
+dest = best
 
-# 4) Write the config with an ABSOLUTE models_dir + the model_filename (preserve any existing settings).
+# 4) Write the config with an ABSOLUTE models_dir + model_filename, preserving existing settings.
+#    CRITICAL: read with utf-8-SIG (strips a UTF-8 BOM that a prior PowerShell `Set-Content -Encoding UTF8`
+#    may have written) and write plain utf-8 (NO BOM). The app's json loader rejects a BOM and silently
+#    falls back to defaults ("your-model.gguf"), which is exactly why the model was ignored.
 cfgp = data / "runtime_config.json"
 cfg = {}
 if cfgp.exists():
     try:
-        cfg = json.loads(cfgp.read_text(encoding="utf-8"))
-    except Exception:
+        cfg = json.loads(cfgp.read_text(encoding="utf-8-sig"))
+    except Exception as e:
+        print("existing config unreadable, writing a fresh one:", e)
         cfg = {}
 if not isinstance(cfg, dict):
     cfg = {}
