@@ -254,7 +254,7 @@ def run() -> int:
             existing_cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
         except Exception:
             try:
-                existing_cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                existing_cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
             except Exception:
                 pass
         if existing_cfg and not _yn("  Existing config found. Overwrite?", True):

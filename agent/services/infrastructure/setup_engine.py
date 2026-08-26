@@ -241,7 +241,7 @@ MODELS_CATALOG = [
 def load_existing() -> dict:
     try:
         if _rs.CONFIG_FILE.exists():
-            return json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+            return json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8-sig"))
     except Exception:
         pass
     return {}

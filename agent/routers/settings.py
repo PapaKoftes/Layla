@@ -74,7 +74,7 @@ def setup_status():
     config_exists = _rs.CONFIG_FILE.exists()
     cfg = {}
     try:
-        cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8")) if config_exists else {}
+        cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8-sig")) if config_exists else {}
     except Exception:
         pass
     model_filename = cfg.get("model_filename", "")
@@ -368,7 +368,7 @@ async def setup_download(url: str, filename: str = ""):
                     cfg2 = {}
                     if _rs.CONFIG_FILE.exists():
                         try:
-                            cfg2 = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+                            cfg2 = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8-sig"))
                         except Exception:
                             pass
                     if not cfg2:
@@ -479,6 +479,23 @@ async def apply_feature_theme_route(req: Request):
     updates = feature_theme_updates(key, enabled, cfg)
     if updates is None:
         return JSONResponse({"ok": False, "error": "unknown theme"}, status_code=400)
+    # A theme's flags can be security-critical (external_tools -> plugins_enabled/mcp_client_enabled = the
+    # plugin CODE-EXECUTION gate; remote_access -> remote_enabled). POST /settings blocks remote writes to
+    # these via _REMOTE_PROTECTED_KEYS; this sibling endpoint must too, or a remote caller flips them here
+    # and bypasses that protection entirely. Refuse a remote write whose theme flags hit a protected key.
+    from services.safety.auth import is_direct_local
+    _socket_host = req.client.host if req.client else None
+    if not is_direct_local(req.headers, _socket_host):
+        _blocked = _REMOTE_PROTECTED_KEYS.intersection(updates)
+        if _blocked:
+            logger.warning("settings/themes: blocked remote theme write to protected keys from %s: %s",
+                           _socket_host, sorted(_blocked))
+            return JSONResponse(
+                {"ok": False, "error": "forbidden",
+                 "detail": "This feature can only be changed from the local machine.",
+                 "protected_keys": sorted(_blocked)},
+                status_code=403,
+            )
     try:
         # editable_only=False: some theme flags (cluster_enabled, scheduler_study_enabled) are
         # not individually in EDITABLE_SCHEMA. Safe because `updates` is the theme whitelist.

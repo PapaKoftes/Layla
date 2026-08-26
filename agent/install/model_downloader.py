@@ -387,6 +387,21 @@ def _download_direct_http(
             mode = "ab" if offset > 0 else "wb"
             if mode == "wb":
                 part_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                # Resume CORRECTNESS: the Range request below starts at `offset`, but the .part on disk can
+                # be LARGER than offset (bytes flushed past the last fsync'd meta checkpoint). Appending the
+                # ranged data would then duplicate bytes [offset, filesize) and shift everything after —
+                # committing a corrupt GGUF (the catalog has no sha256, so _verify can't catch it). Truncate
+                # the file back to exactly `offset` so the append continues from the right place.
+                try:
+                    with part_path.open("r+b") as _trunc:
+                        _trunc.truncate(offset)
+                except OSError as _te:
+                    logger.warning("resume truncate failed (%s) — restarting from 0", _te)
+                    restart_download("resume truncate failed")
+                    offset = 0
+                    mode = "wb"
+                    part_path.parent.mkdir(parents=True, exist_ok=True)
 
             block = 1024 * 1024  # 1 MiB reads for reasonable throughput on wide RTTs
             downloaded_blocks = offset // block if block else 0
@@ -411,6 +426,21 @@ def _download_direct_http(
                                 cl_s=resp_cl_store if total_size is None else total_size,
                             )
                             raise
+                        except Exception as _read_exc:
+                            # Mid-stream network read error (ConnectionReset / IncompleteRead / timeout).
+                            # Previously this propagated straight out and could leave a short .part that a
+                            # later run resumed. Checkpoint what we have (fsync + meta) and fail cleanly so
+                            # the NEXT attempt resumes correctly from the fsync'd offset via Range.
+                            logger.warning("download read error at %d bytes: %s", offset, _read_exc)
+                            try:
+                                _fsync_file(out)
+                                write_meta(offset, total_size,
+                                           etag_s=resp_etag,
+                                           cl_s=resp_cl_store if total_size is None else total_size)
+                            except Exception:
+                                pass
+                            return {"ok": False, "path": None, "filename": None,
+                                    "error": f"download interrupted at {offset} bytes: {_read_exc}. Re-run to resume."}
                         if not chunk:
                             break
                         out.write(chunk)

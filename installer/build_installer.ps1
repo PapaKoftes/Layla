@@ -53,7 +53,7 @@ if ($pyMajorMinor -notin @("3.11", "3.12")) {
     throw @"
 Unsupported Python for Windows installer build: $pyMajorMinor
 
-Layla supports Python 3.11–3.12 for reliable PyInstaller + dependency resolution.
+Layla supports Python 3.11-3.12 for reliable PyInstaller + dependency resolution.
 Fix:
   - Install Python 3.12 (recommended) and ensure `py -3.12` works, OR
   - Put Python 3.11/3.12 earlier on PATH than newer interpreters.
@@ -71,18 +71,22 @@ Write-Host "==> Sync agent + launcher assets into payload (from git HEAD, not th
 # learnings), chroma_db/*.sqlite (thousands of personal embedding vectors), agent/.governance/ logs,
 # runtime_config.json with local paths, knowledge_graph.graphml, titles.txt.
 #
-# git archive has allowlist semantics — it emits exactly what a fresh clone gets. That is the property
+# git archive has allowlist semantics - it emits exactly what a fresh clone gets. That is the property
 # we want: any NEW untracked operator file is excluded automatically, with no denylist to maintain.
 Push-Location $Root
 try {
-  $dirty = (& git status --porcelain -- agent personalities | Where-Object { $_ -notmatch '^\?\?' })
+  $dirty = (& git status --porcelain -- agent personalities knowledge personality.json | Where-Object { $_ -notmatch '^\?\?' })
   if ($dirty) {
-    Write-Warning "Working tree has UNCOMMITTED changes under agent/ or personalities/."
-    Write-Warning "The installer ships committed code only — those changes will NOT be included:"
+    Write-Warning "Working tree has UNCOMMITTED changes under agent/, personalities/, knowledge/ or personality.json."
+    Write-Warning "The installer ships committed code only - those changes will NOT be included:"
     $dirty | ForEach-Object { Write-Warning "    $_" }
   }
+  # knowledge/ (the RAG knowledge base + packs) and personality.json live at the REPO ROOT and the app
+  # reads them from REPO_ROOT at runtime (main.py knowledge indexing, runtime_safety load_knowledge_docs /
+  # load_personality). They MUST ship, or every installed user gets Layla with no knowledge base and no
+  # personality - silently. (They were omitted before: the archive only listed agent + personalities.)
   $archive = Join-Path ([System.IO.Path]::GetTempPath()) "layla-payload-$PID.tar"
-  & git archive --format=tar -o $archive HEAD agent personalities
+  & git archive --format=tar -o $archive HEAD agent personalities knowledge personality.json
   if ($LASTEXITCODE -ne 0) { throw "git archive failed - the installer payload must be built from a committed tree." }
   & tar -xf $archive -C $Payload
   if ($LASTEXITCODE -ne 0) { throw "failed to extract the payload archive into $Payload" }
@@ -123,7 +127,7 @@ Per-user data lives under %LOCALAPPDATA%\Layla (set via LAYLA_DATA_DIR):
 On first launch, copy runtime_config.example.json to that folder as runtime_config.json if missing.
 "@ | Set-Content -Path $dataHint -Encoding UTF8
 
-# ── Leak gate: refuse to compile an installer containing operator state ──────────────────────────
+# -- Leak gate: refuse to compile an installer containing operator state --------------------------
 # Defense in depth behind the git-archive export. If anyone ever reverts the payload step to a
 # working-tree copy, the build FAILS here instead of silently shipping a private key to a friend.
 Write-Host "==> Verify payload contains no operator state"

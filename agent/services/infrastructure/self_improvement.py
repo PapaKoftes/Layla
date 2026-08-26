@@ -59,7 +59,7 @@ def _apply_config_keys(config_keys: dict[str, Any]) -> dict[str, Any]:
         from runtime_safety import CONFIG_FILE, atomic_write_config
 
         try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8")) if CONFIG_FILE.exists() else {}
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig")) if CONFIG_FILE.exists() else {}
             if not isinstance(data, dict):
                 data = {}
         except Exception:
