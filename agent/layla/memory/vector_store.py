@@ -581,7 +581,12 @@ def add_vector(vec: np.ndarray, metadata: dict) -> str:
             meta_flat["embed_model"] = _current_model_name
         coll.add(ids=[uid], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
     except Exception as _exc:
-        logger.warning("vector_store:L150: %s", _exc, exc_info=True)
+        # RE-RAISE (do not swallow + return a fake uid). Returning uid on a failed write made every caller
+        # record embedding_id for a vector that does not exist and left needs_reindex=0, so the learning
+        # was invisible to recall AND never self-healed. Every caller wraps this in try/except (their
+        # needs_reindex / dedup-retry recovery), so raising is what actually triggers that recovery.
+        logger.warning("vector_store add_vector failed (write not committed): %s", _exc, exc_info=True)
+        raise
     return uid
 
 

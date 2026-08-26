@@ -25,7 +25,10 @@ if (-not $PayloadDir) { $PayloadDir = Join-Path $PSScriptRoot "payload\Layla" }
 $py = Join-Path $PayloadDir "python\python.exe"
 $agent = Join-Path $PayloadDir "agent"
 $exe = Join-Path $PayloadDir "layla.exe"
-foreach ($p in @($py, $exe, (Join-Path $agent "main.py"))) {
+# Required payload roots: the engine, the bundled Python, AND the runtime content trees the app reads from
+# the install root. knowledge/ + personality.json were silently omitted once — assert they ship so that
+# regression fails the build instead of shipping a Layla with no knowledge base or personality.
+foreach ($p in @($py, $exe, (Join-Path $agent "main.py"), (Join-Path $PayloadDir "knowledge"), (Join-Path $PayloadDir "personality.json"))) {
   if (-not (Test-Path $p)) { Write-Error ("packaged_smoke: missing {0} - payload is incomplete" -f $p); exit 2 }
 }
 $data = Join-Path $env:TEMP ("layla_smoke_" + [System.Guid]::NewGuid().ToString("N"))

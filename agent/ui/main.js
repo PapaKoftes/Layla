@@ -343,6 +343,14 @@ function init() {
   // Initialize Phase 2 batch 11 (core orchestrator)
   app.initApp();
 
+  // Kill the legacy polling loops AGAIN, now that they exist. app.initApp() both DEFINES
+  // window._laylaKillLegacyPolling and starts the legacy /health loops; the earlier kill call above
+  // ran before initApp so it was a no-op, leaving those loops running duplicated alongside
+  // healthService (2x request rate, and never paused when the tab is hidden). Kill them here.
+  if (typeof window._laylaKillLegacyPolling === 'function') {
+    window._laylaKillLegacyPolling();
+  }
+
   // Initialize Phase 4 modules (inline scripts converted)
   obsidian.initObsidian();
 

@@ -133,13 +133,24 @@ def _is_approval_bypassed(ctx: DispatchContext, tool_name: str) -> bool:
             from runtime_safety import DANGEROUS_TOOLS as _DANGEROUS
         except Exception:
             _DANGEROUS = ()
+        # A tool the registry manifest marks require_approval:True is side-effectful by declaration, so the
+        # safe_mode floor must gate it too — not only the runtime_safety.DANGEROUS_TOOLS subset. That subset
+        # omitted several approval-required tools (invoke_skill, type_text, click_ui, restore_file_checkpoint,
+        # gencad_generate_toolpath, fabrication_assist_run, …), which would then auto-approve under
+        # tool_approval_bypass despite safe_mode. Fail closed: gate anything that needs approval.
+        try:
+            from layla.tools.registry import TOOLS as _TOOLS
+            _needs_approval = bool((_TOOLS.get(tool_name) or {}).get("require_approval"))
+        except Exception:
+            _needs_approval = False
+        _is_dangerous = (tool_name in _DANGEROUS) or _needs_approval
         # Coarse global bypass gates EVERY dangerous tool. Explicit per-tool trust gates only the
         # destructive core (dangerous minus the privacy-only capture/interact tools) — so a named
         # browser_click/clipboard tool may auto-approve, but a write/exec/send never does under safe_mode.
         if _per_tool and not ctx.cfg.get("tool_approval_bypass", False):
-            _blocked = tool_name in _DANGEROUS and tool_name not in _PRIVACY_GATED_ONLY
+            _blocked = _is_dangerous and tool_name not in _PRIVACY_GATED_ONLY
         else:
-            _blocked = tool_name in _DANGEROUS
+            _blocked = _is_dangerous
         if _blocked:
             if "__safe_mode_floor" not in _bypass_warned:
                 _bypass_warned.add("__safe_mode_floor")

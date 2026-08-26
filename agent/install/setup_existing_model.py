@@ -49,7 +49,7 @@ def run() -> int:
             cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError:
             try:
-                cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
             except Exception:
                 cfg = {}
     else:
