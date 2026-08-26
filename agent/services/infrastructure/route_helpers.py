@@ -180,7 +180,7 @@ def raw_config_file() -> dict:
     import runtime_safety as _rs
 
     try:
-        raw = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8-sig"))
         return raw if isinstance(raw, dict) else {}
     except FileNotFoundError:
         return {}
@@ -215,7 +215,7 @@ def not_in_force_report() -> dict:
     from config_schema import get_editable_keys
 
     try:
-        raw = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8-sig"))
         if not isinstance(raw, dict):
             raw = {}
     except FileNotFoundError:

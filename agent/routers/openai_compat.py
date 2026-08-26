@@ -396,6 +396,11 @@ async def v1_chat_completions(req: dict, request: Request):
                     }
                     yield f"data: {json.dumps(progress_evt)}\n\n"
                     tok_q: queue.Queue = queue.Queue()
+                    import threading as _threading
+                    # Client-disconnect abort: without this, an SDK client that drops mid-stream leaves the
+                    # (scarce, single) local model generating the full response server-side with nobody
+                    # draining the queue. Signal the worker to stop when this generator is closed.
+                    _v1_abort = _threading.Event()
 
                     def _stream_worker() -> None:
                         try:
@@ -406,15 +411,17 @@ async def v1_chat_completions(req: dict, request: Request):
                                 aspect_id=aspect_id,
                                 show_thinking=show_thinking,
                                 sampling=sampling,  # plan #18: honour request temp/max_tokens on the FINAL stream
+                                client_abort_event=_v1_abort,
                             )
                             for t in gen_tokens:
                                 tok_q.put(t)
+                                if _v1_abort.is_set():
+                                    break
                         except Exception as ex:
                             logger.warning("v1 stream worker: %s", ex)
                         finally:
                             tok_q.put(None)
 
-                    import threading as _threading
                     _threading.Thread(target=_stream_worker, daemon=True).start()
                     # Filter the live token stream the SAME way the /agent router does: hold an
                     # unclosed "[", strip complete [MARKER …] tags, and strip a leading persona
@@ -429,43 +436,62 @@ async def v1_chat_completions(req: dict, request: Request):
                     # BL-297: LIVE content-safety gate. A raw SDK client is never sent a retraction,
                     # so suppressing a Tier-1/2 payload's continuation on the wire matters most here.
                     _v1_out_guard = StreamOutputGuard()
-                    while True:
-                        token = await asyncio.to_thread(tok_q.get)
-                        if token is None:
-                            break
-                        if not token:
-                            continue
-                        # Deliberation sentinel (internal per-aspect POV trace) — the /agent router
-                        # intercepts it; the /v1 stream must SKIP it, not ship it as assistant content.
-                        if isinstance(token, str) and token.startswith("__DELIB_META__"):
-                            continue
-                        response_text += token
-                        _v1_delta, _v1_emitted = _ssp_v1(response_text, _v1_emitted)
-                        if not _v1_delta:
-                            continue
-                        # Honor the client `stop` on the LIVE delta flow too (not just the stored copy):
-                        # once a stop sequence lands inside the accumulated shown text, emit only the
-                        # pre-stop remainder and stop yielding further content (OpenAI stream contract).
-                        if _v1_stop:
-                            _combined = _v1_shown + _v1_delta
-                            _truncated = _apply_stop(_combined, _v1_stop)
-                            if _truncated != _combined:
-                                _v1_delta = _truncated[len(_v1_shown):]
-                                _v1_stopped = True
-                            _v1_shown = _truncated
-                        if _v1_delta:
-                            _v1_delta = _v1_out_guard.feed(_v1_delta)  # BL-297: live safety gate
-                        if _v1_delta:
-                            evt = {
-                                "id": completion_id,
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": model_name,
-                                "choices": [{"index": 0, "delta": {"content": _v1_delta}, "finish_reason": None}],
-                            }
-                            yield f"data: {json.dumps(evt)}\n\n"
-                        if _v1_stopped or _v1_out_guard.blocked:
-                            break
+                    # try/finally: on client disconnect the SSE generator is closed (GeneratorExit at a
+                    # yield) — the finally signals the worker to stop generating server-side (no more wasted
+                    # model compute on an abandoned request). The timeout-get keeps the loop responsive and
+                    # lets us pulse a keepalive so an intermediary proxy doesn't idle-timeout a slow cold
+                    # first token.
+                    try:
+                        _v1_idle = 0.0
+                        while True:
+                            try:
+                                token = await asyncio.to_thread(lambda: tok_q.get(timeout=0.5))
+                            except queue.Empty:
+                                if _v1_abort.is_set():
+                                    break
+                                _v1_idle += 0.5
+                                if _v1_idle >= 10.0:
+                                    _v1_idle = 0.0
+                                    yield ": keepalive\n\n"
+                                continue
+                            _v1_idle = 0.0
+                            if token is None:
+                                break
+                            if not token:
+                                continue
+                            # Deliberation sentinel (internal per-aspect POV trace) — the /agent router
+                            # intercepts it; the /v1 stream must SKIP it, not ship it as assistant content.
+                            if isinstance(token, str) and token.startswith("__DELIB_META__"):
+                                continue
+                            response_text += token
+                            _v1_delta, _v1_emitted = _ssp_v1(response_text, _v1_emitted)
+                            if not _v1_delta:
+                                continue
+                            # Honor the client `stop` on the LIVE delta flow too (not just the stored copy):
+                            # once a stop sequence lands inside the accumulated shown text, emit only the
+                            # pre-stop remainder and stop yielding further content (OpenAI stream contract).
+                            if _v1_stop:
+                                _combined = _v1_shown + _v1_delta
+                                _truncated = _apply_stop(_combined, _v1_stop)
+                                if _truncated != _combined:
+                                    _v1_delta = _truncated[len(_v1_shown):]
+                                    _v1_stopped = True
+                                _v1_shown = _truncated
+                            if _v1_delta:
+                                _v1_delta = _v1_out_guard.feed(_v1_delta)  # BL-297: live safety gate
+                            if _v1_delta:
+                                evt = {
+                                    "id": completion_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": int(time.time()),
+                                    "model": model_name,
+                                    "choices": [{"index": 0, "delta": {"content": _v1_delta}, "finish_reason": None}],
+                                }
+                                yield f"data: {json.dumps(evt)}\n\n"
+                            if _v1_stopped or _v1_out_guard.blocked:
+                                break
+                    finally:
+                        _v1_abort.set()
             else:
                 result = await asyncio.to_thread(
                     autonomous_run,

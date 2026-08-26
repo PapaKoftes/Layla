@@ -115,7 +115,10 @@ async def obsidian_writeback(request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    n = int((body or {}).get("n", 10) or 10)
+    try:
+        n = int((body or {}).get("n", 10) or 10)
+    except (TypeError, ValueError):
+        n = 10  # non-numeric n -> default, not a 500 (matches german/plans/agent_tasks handlers)
     try:
         from services.infrastructure.obsidian_sync import sync_enabled, writeback_learnings
         if not sync_enabled():

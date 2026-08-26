@@ -90,3 +90,13 @@ def test_granular_autoapprove_ignored_while_remote_exposed():
 def test_auto_approve_tools_is_remote_protected():
     from routers.settings import _REMOTE_PROTECTED_KEYS as P
     assert "auto_approve_tools" in P
+
+
+def test_safe_mode_floor_also_gates_approval_required_non_dangerous_tools():
+    """Tools the registry marks require_approval:True but that are NOT in DANGEROUS_TOOLS
+    (invoke_skill, type_text, click_ui, restore_file_checkpoint, …) must ALSO be gated by the
+    safe_mode floor under bypass — otherwise they auto-approve despite safe_mode being on."""
+    for tool in ("invoke_skill", "type_text", "click_ui", "restore_file_checkpoint"):
+        assert _is_approval_bypassed(_ctx({"tool_approval_bypass": True, "safe_mode": True}), tool) is False, tool
+    # And with safe_mode OFF (deliberate two-step) they DO auto-approve.
+    assert _is_approval_bypassed(_ctx({"tool_approval_bypass": True, "safe_mode": False}), "invoke_skill") is True

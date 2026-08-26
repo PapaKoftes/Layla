@@ -14,6 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 
+## [1.7.6] — 2026-08-26
+
+### Fixed — full end-to-end verification pass (6 parallel subsystem audits, every finding independently confirmed)
+- **Installer shipped without the knowledge base or personality.** The payload was `git archive HEAD agent personalities`, which omitted the root-level `knowledge/` tree (92 files, incl. the 1.7.5 knowledge packs) and `personality.json` — so every `.exe` install ran with no knowledge injection/indexing and no personality, silently. Both now ship, and the packaged-smoke gate asserts their presence so it can't regress.
+- **Remote clients could enable plugin code execution via `POST /settings/themes`.** The themes endpoint wrote security-critical flags (`plugins_enabled`, `mcp_client_enabled`, `remote_enabled`) with none of the `_REMOTE_PROTECTED_KEYS` guard that `POST /settings` enforces, and it's remotely reachable. It now applies the same `is_direct_local` refusal. (Regression-tested: remote → 403, local → allowed.)
+- **A failed vector write silently orphaned a learning forever.** `add_vector` swallowed the store exception and returned a fake id, so the learning recorded a non-existent embedding and `needs_reindex` stayed 0 (never self-healed). It now re-raises so the caller's `needs_reindex` recovery fires.
+- **A network blip mid model-download could commit a corrupt GGUF.** Resume appended at end-of-file from a smaller `meta` offset (duplicating bytes), and read errors weren't caught. Resume now truncates to the checkpoint offset before appending, and a mid-stream read error checkpoints and fails cleanly so the next run resumes correctly.
+- **A stuck model could spin ~15 min instead of answering.** A decision carrying a `revised_objective` every step bypassed every iteration backstop; it's now counted toward the same no-op spin cap as `think`/`none`, ending in the forced wrap-up answer.
+- **`safe_mode` floor now gates every approval-required tool** (not only the `DANGEROUS_TOOLS` subset) — `invoke_skill`, `type_text`, `click_ui`, etc. no longer auto-approve under `tool_approval_bypass` while `safe_mode` is on.
+- **BOM-tolerant config everywhere:** the setup-status, setup-download, and other config readers now read `utf-8-sig` (the load-config fix wasn't propagated), so a BOM'd `runtime_config.json` no longer wipes settings or falsely reports "no model".
+- **`/v1/chat/completions` no longer keeps generating after a client disconnect** (client-abort wired + keepalive), and **`/obsidian/writeback` returns cleanly on a non-numeric `n`** instead of 500.
+- **Duplicate health polling in the Web UI:** the legacy-poller kill ran before it was defined, so the old `/health` loops ran alongside the new poller (2× requests, no tab-hidden pause). Fixed the ordering.
+
 ## [1.7.5] — 2026-08-14
 
 ### Added

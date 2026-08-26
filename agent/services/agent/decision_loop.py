@@ -337,6 +337,12 @@ def run_decision_loop(
             state["consecutive_no_progress"] = 0
             state["strategy_shift_count"] = 0
             goal = state["objective"]
+            # A reframe advances NONE of depth/tool_calls/blocked_calls and `continue`s, so a stuck model
+            # that returns a fresh revised_objective every step would spin one decision-model call per
+            # iteration until max_runtime (~15 min) — the SAME unbounded-spin hole the no_op_steps cap was
+            # added to close for 'think'/'none'. Count it toward that cap so repeated no-progress reframing
+            # terminates in the forced wrap-up answer instead of a wall-clock timeout.
+            state["no_op_steps"] = int(state.get("no_op_steps", 0) or 0) + 1
             continue
         if consecutive >= 2 and not objective_complete and state.get("strategy_shift_count", 0) >= 2:
             _al._emit_ux(state, ux_state_queue, _al.UX_STATE_CHANGING_APPROACH)

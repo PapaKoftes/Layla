@@ -15,8 +15,12 @@ def test_collect_metrics():
 
 def test_get_effective_config():
     from services.infrastructure.system_optimizer import get_effective_config
-    cfg = get_effective_config({"n_ctx": 4096, "max_tool_calls": 5})
-    assert cfg["n_ctx"] <= 4096
+    # Pin performance_mode: its default "auto" resolves to a hardware TIER, and a strong GPU box
+    # legitimately RAISES n_ctx above the base (correct product behavior) — which used to fail the old
+    # `<= 4096` assertion only on high-tier dev machines. With a fixed mode the result is deterministic.
+    cfg = get_effective_config({"n_ctx": 4096, "max_tool_calls": 5, "performance_mode": "low"})
+    assert isinstance(cfg["n_ctx"], int) and cfg["n_ctx"] >= 256      # a valid context size
+    assert cfg["n_ctx"] <= 4096                                        # low mode never raises above base
     assert cfg["max_tool_calls"] <= 5
 
 

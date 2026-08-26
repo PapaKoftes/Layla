@@ -227,7 +227,7 @@ def test_settings_preset_potato_writes_merged_config(tmp_path, monkeypatch):
     import runtime_safety
 
     fake = tmp_path / "runtime_config.json"
-    fake.write_text(json.dumps({"model_filename": "keep.gguf", "temperature": 0.5}), encoding="utf-8")
+    fake.write_text(json.dumps({"model_filename": "keep.gguf", "temperature": 0.5, "auto_tune_enabled": False}), encoding="utf-8")
     monkeypatch.setattr(runtime_safety, "CONFIG_FILE", fake)
     runtime_safety.invalidate_config_cache()
 
