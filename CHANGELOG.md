@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 
-## [1.7.6] — 2026-08-26
+## [1.7.5] — 2026-08-26
 
 ### Fixed — full end-to-end verification pass (6 parallel subsystem audits, every finding independently confirmed)
 - **Installer shipped without the knowledge base or personality.** The payload was `git archive HEAD agent personalities`, which omitted the root-level `knowledge/` tree (92 files, incl. the 1.7.5 knowledge packs) and `personality.json` — so every `.exe` install ran with no knowledge injection/indexing and no personality, silently. Both now ship, and the packaged-smoke gate asserts their presence so it can't regress.
@@ -26,8 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BOM-tolerant config everywhere:** the setup-status, setup-download, and other config readers now read `utf-8-sig` (the load-config fix wasn't propagated), so a BOM'd `runtime_config.json` no longer wipes settings or falsely reports "no model".
 - **`/v1/chat/completions` no longer keeps generating after a client disconnect** (client-abort wired + keepalive), and **`/obsidian/writeback` returns cleanly on a non-numeric `n`** instead of 500.
 - **Duplicate health polling in the Web UI:** the legacy-poller kill ran before it was defined, so the old `/health` loops ran alongside the new poller (2× requests, no tab-hidden pause). Fixed the ordering.
-
-## [1.7.5] — 2026-08-14
 
 ### Added
 - **Knowledge packs + presets.** Curated domain knowledge under `knowledge/packs/` (core, fabrication, embedded, engineering, research, reasoning, psychology). Pick a bundle via `knowledge_preset` (companion / maker / engineer / researcher / everything) or an explicit `knowledge_packs` list; `core` is always on and your loose `knowledge/` files are never filtered.
