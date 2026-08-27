@@ -384,7 +384,8 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": 100,
         "hint": "When remote_enabled, max requests per minute per non-localhost IP (0 = unlimited).",
     },
-    {"key": "llama_server_url", "type": "string", "category": "remote", "hint": "External llama.cpp server URL. Overrides local model."},
+    {"key": "llama_server_url", "type": "string", "category": "remote", "hint": "External llama.cpp / OpenAI-compatible server URL (vLLM, LiteLLM, OpenRouter, etc.). Overrides local model."},
+    {"key": "inference_api_key", "type": "string", "category": "remote", "hint": "Bearer token for an authenticated OpenAI-compatible inference endpoint (OpenRouter/OpenAI/together/secured vLLM). Empty = no auth (local servers). Stored in the OS keyring; redacted in the UI."},
     # ── Admin mode (trusted operator) ──
     {
         "key": "admin_mode",
