@@ -289,3 +289,4 @@ _.action_toggle_thinking  # unused method (tui.py:479)
 _.action_do_wakeup  # unused method (tui.py:484)
 _.do_POST  # unused method (ui\_preview_server.py:80)
 _.log_message  # unused method (ui\_preview_server.py:86)
+neutralize_untrusted  # used via function-local import in layla/tools/impl/web.py (_guard_web_result); vulture can't trace dynamic import
