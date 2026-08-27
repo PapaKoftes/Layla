@@ -867,6 +867,10 @@ def load_config() -> dict:
             "completion_max_tokens": 256,
             "remote_model_name": "llama3.1",
             "llama_server_url": None,
+            # Outbound Bearer token for an authenticated OpenAI-compatible inference endpoint
+            # (OpenRouter / OpenAI / together.ai / a secured vLLM). Empty = no auth header (local servers).
+            # Name contains 'api_key' so it is auto-routed to the OS keyring + redacted in GET /settings.
+            "inference_api_key": "",
             "coding_model": None,
             "reasoning_model": None,
             "chat_model": None,

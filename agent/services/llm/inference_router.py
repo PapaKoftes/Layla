@@ -72,6 +72,22 @@ def inference_backend_uses_local_gguf(cfg: dict) -> bool:
     return _get_backend(cfg) == "llama_cpp"
 
 
+def _auth_headers(cfg: dict) -> dict:
+    """Request headers for an OpenAI-compatible call, adding `Authorization: Bearer <inference_api_key>`
+    when configured (resolved from the OS keyring). This is what lets Layla reach an AUTHENTICATED cloud
+    endpoint (OpenRouter / OpenAI / together.ai / a secured vLLM) — the previous path sent no auth header,
+    so it only worked with unauthenticated local servers. Empty key -> no header (unchanged behavior)."""
+    headers = {"Content-Type": "application/json"}
+    try:
+        from services.safety.secret_store import get_secret
+        key = (get_secret("inference_api_key", cfg.get("inference_api_key")) or "").strip()
+    except Exception:
+        key = (cfg.get("inference_api_key") or "").strip()
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
 def _openai_compatible_url(url: str) -> str:
     """OpenAI-compatible servers use /v1/chat/completions."""
     return url.rstrip("/")
@@ -122,12 +138,14 @@ def run_completion_openai_compatible(
     data = _json.dumps(body).encode("utf-8")
     primary_url = urls[0]
 
+    _headers = _auth_headers(cfg)
+
     def _one_request(url: str) -> urllib.request.Request:
         return urllib.request.Request(
             _openai_compatible_url(url) + "/v1/chat/completions",
             data=data,
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers=_headers,
         )
 
     try:
