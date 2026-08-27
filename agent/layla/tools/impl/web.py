@@ -30,6 +30,25 @@ logger = logging.getLogger("layla")
 
 # Injected by layla.tools.registry with the assembled TOOLS dict (same object in every module).
 TOOLS: dict = {}
+def _guard_web_result(result: dict, cfg: dict | None = None) -> dict:
+    """Neutralize UNTRUSTED fetched web content before it enters the agent context: frame it as reference
+    DATA (not instructions) and redact obvious prompt-injection markers. Ingested docs already get this;
+    web-fetch / browser tool output did not, so a hostile page could embed 'ignore previous instructions'.
+    Defense-in-depth behind the approval gate. Gated by doc_injection_guard_enabled (default on)."""
+    if not isinstance(result, dict) or not result.get("ok"):
+        return result
+    try:
+        from services.workspace.doc_ingestion import neutralize_untrusted
+        enabled = bool((cfg or {}).get("doc_injection_guard_enabled", True))
+        for key in ("text", "content"):
+            v = result.get(key)
+            if isinstance(v, str) and v:
+                result[key] = neutralize_untrusted(v, enabled)
+    except Exception:
+        pass
+    return result
+
+
 def fetch_url_tool(url: str, store: bool = False) -> dict:
     try:
         import runtime_safety
@@ -61,6 +80,7 @@ def fetch_url_tool(url: str, store: bool = False) -> dict:
                         # cap the external-crawler output (built-in paths already truncate); a
                         # generous upper bound so a pathological page can't return unbounded memory.
                         "content": (_res.get("content") or "")[:200_000], "backend": _res.get("backend", _cb)}
+                _out = _guard_web_result(_out, cfg)
                 try:
                     if not store:
                         from services.retrieval.http_response_cache import set_cached
@@ -73,6 +93,7 @@ def fetch_url_tool(url: str, store: bool = False) -> dict:
     from layla.tools.web import fetch_url
 
     out = fetch_url(url, store=store)
+    out = _guard_web_result(out, cfg)
     try:
         if not store and out.get("ok"):
             import runtime_safety
@@ -87,7 +108,7 @@ def browser_navigate(url: str, timeout_ms: int = 15000) -> dict:
     """Navigate to a URL and return its main text content and title."""
     try:
         from services.infrastructure.browser import navigate
-        return navigate(url, timeout_ms=timeout_ms)
+        return _guard_web_result(navigate(url, timeout_ms=timeout_ms))
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
 
@@ -111,7 +132,7 @@ def browser_click(url: str, selector: str) -> dict:
     """Navigate to a URL, click a CSS selector, return updated page text."""
     try:
         from services.infrastructure.browser import click_and_extract
-        return click_and_extract(url, selector)
+        return _guard_web_result(click_and_extract(url, selector))
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
 
