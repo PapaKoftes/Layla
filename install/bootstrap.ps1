@@ -124,12 +124,17 @@ if (Test-Path $VPy) {
 }
 
 # 4) compiler-free heavy wheels FIRST (prebuilt; no toolchain), then the app
+$reinstallGpu = @()
 if ($UseGpu) {
     Write-Host "[4/7] NVIDIA GPU detected ($Gpu) - installing the CUDA llama.cpp build for GPU offload ..." -ForegroundColor Green
+    # Force a reinstall so a RE-RUN that switches CPU->GPU actually swaps the wheel. Without this, on a
+    # reused .venv uv sees llama-cpp-python already satisfies ">=0.3.1,<0.4" and keeps the CPU wheel -
+    # GPU offload then silently never happens even though provision_model sets n_gpu_layers=-1.
+    $reinstallGpu = @("--reinstall")
 } else {
     Write-Host "[4/7] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
 }
-uv pip install --python $VPy $LlamaSpec --extra-index-url $LlamaIndex --index-strategy unsafe-best-match
+uv pip install --python $VPy @reinstallGpu $LlamaSpec --extra-index-url $LlamaIndex --index-strategy unsafe-best-match
 if ($UseGpu) { Add-CudaRuntimeDlls }   # the CUDA wheel needs cudart/cublas beside it or it won't load
 uv pip install --python $VPy torch --index-url https://download.pytorch.org/whl/cpu
 # research + crawl: web search, article extraction, PDF/arXiv/Wikipedia reading. These were
@@ -236,7 +241,8 @@ if (-not $SkipModel) {
             Write-Host "  Falling back to the CPU build so Layla still runs (update your NVIDIA driver, then re-run to get GPU speed) ..." -ForegroundColor Yellow
             $retryIndex = $LlamaIndexCpu
             $fellBackToCpu = $true
-            & $VPy -c "import json,pathlib; p=pathlib.Path('agent/runtime_config.json'); d=json.loads(p.read_text('utf-8')) if p.exists() else {}; d['n_gpu_layers']=0; p.write_text(json.dumps(d,indent=2),encoding='utf-8')" 2>$null
+            # utf-8-sig: tolerate a BOM the runtime now accepts, else json.loads chokes and the write is lost.
+            & $VPy -c "import json,pathlib; p=pathlib.Path('agent/runtime_config.json'); d=json.loads(p.read_text('utf-8-sig')) if p.exists() else {}; d['n_gpu_layers']=0; p.write_text(json.dumps(d,indent=2),encoding='utf-8')" 2>$null
         } else {
             Write-Host "  Self-test failed. Reinstalling the llama-cpp CPU wheel and retrying ..." -ForegroundColor Yellow
         }
@@ -247,11 +253,22 @@ if (-not $SkipModel) {
             exit 1
         }
     }
+    # Report GPU vs CPU from the ACTUAL build capability, not the $UseGpu intent: a reused .venv or a
+    # satisfied version could have left the CPU wheel in place, in which case the self-test passed on CPU
+    # and claiming "runs on your GPU" would be a lie. llama_supports_gpu_offload() is the ground truth.
+    $gpuActive = $false
     if ($UseGpu -and -not $fellBackToCpu) {
+        & $VPy -c "import sys,llama_cpp; sys.exit(0 if getattr(llama_cpp,'llama_supports_gpu_offload',lambda:False)() else 3)" 2>$null
+        if ($LASTEXITCODE -eq 0) { $gpuActive = $true }
+    }
+    if ($gpuActive) {
         Write-Host "  Self-test passed - Layla loads the model on your NVIDIA GPU ($Gpu) and completes a turn." -ForegroundColor Green
     } elseif ($fellBackToCpu) {
         Write-Host "  Self-test passed - Layla runs on CPU. The CUDA build could not load, so GPU offload is OFF." -ForegroundColor Yellow
         Write-Host "  To get GPU speed: update your NVIDIA driver, then re-run  install\enable_gpu.ps1" -ForegroundColor Yellow
+    } elseif ($UseGpu) {
+        Write-Host "  Self-test passed, but the installed llama.cpp build has NO GPU support - running on CPU." -ForegroundColor Yellow
+        Write-Host "  Fix: run  install\enable_gpu.ps1  (force-reinstalls the CUDA build)." -ForegroundColor Yellow
     } else {
         Write-Host "  Self-test passed - Layla loads a model and completes a turn on this machine." -ForegroundColor Green
     }

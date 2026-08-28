@@ -43,7 +43,9 @@ if (-not (Test-Uv)) {
 }
 
 function Set-GpuLayers([int]$n) {
-    & $VPy -c "import json,pathlib,sys; p=pathlib.Path(r'$Cfg'); d=json.loads(p.read_text('utf-8')) if p.exists() else {}; d['n_gpu_layers']=int(sys.argv[1]); p.write_text(json.dumps(d,indent=2),encoding='utf-8')" $n 2>$null
+    # utf-8-sig on read tolerates a BOM (Notepad adds one) the runtime now accepts; without it json.loads
+    # throws, the error is swallowed by 2>$null, and n_gpu_layers is silently never written.
+    & $VPy -c "import json,pathlib,sys; p=pathlib.Path(r'$Cfg'); d=json.loads(p.read_text('utf-8-sig')) if p.exists() else {}; d['n_gpu_layers']=int(sys.argv[1]); p.write_text(json.dumps(d,indent=2),encoding='utf-8')" $n 2>$null
 }
 
 # The abetlen CUDA wheel ships ggml-cuda.dll but NOT the CUDA runtime it links against
@@ -53,7 +55,12 @@ function Set-GpuLayers([int]$n) {
 # prebuilt GPU build could not load before - the installer's "bundles the runtime" claim was wrong.
 function Add-CudaRuntimeDlls {
     Write-Host "  Ensuring CUDA runtime DLLs (cudart/cublas) sit next to ggml-cuda.dll ..." -ForegroundColor Cyan
-    uv pip install --python $VPy nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 2>&1 | Out-Null
+    # Run uv BARE - no 2>&1, no | Out-Null. Under Windows PowerShell 5.1 with ErrorActionPreference='Stop'
+    # (set at the top of this script), redirecting a native command's stderr wraps uv's benign progress
+    # lines as a NativeCommandError and ABORTS the script - here that leaves the CUDA wheel installed but
+    # WITHOUT its runtime DLLs (and before Set-GpuLayers/self-test). bootstrap.ps1's Add-CudaRuntimeDlls
+    # runs uv bare for exactly this reason.
+    uv pip install --python $VPy nvidia-cuda-runtime-cu12 nvidia-cublas-cu12
     if (-not (Test-Path $Lib)) { return }
     $sp = ".\.venv\Lib\site-packages"
     foreach ($sub in @("nvidia\cuda_runtime\bin", "nvidia\cublas\bin")) {
@@ -126,7 +133,8 @@ function Build-LlamaFromSource([double]$cap) {
         "`"$py`" -m pip install --no-binary llama-cpp-python `"$LlamaSrcSpec`" --force-reinstall --no-cache-dir",
         "exit /b %errorlevel%"
     ) | Set-Content -Path $bat -Encoding ASCII
-    & $py -m ensurepip 2>&1 | Out-Null
+    # Bare (see Add-CudaRuntimeDlls): a redirected native stderr aborts under ErrorActionPreference=Stop.
+    & $py -m ensurepip | Out-Null
     cmd /c "`"$bat`""
     if ($LASTEXITCODE -ne 0) { Write-Host "  Source build failed. See the output above." -ForegroundColor Red; return $false }
     # The source build links the installed toolkit's runtime; copy those DLLs next to the built ggml-cuda.dll.
@@ -186,8 +194,22 @@ Set-GpuLayers -1
 Write-Host "  Verifying the GPU build loads the model and completes a turn ..." -ForegroundColor Cyan
 & $VPy scripts\selftest.py
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "  The CUDA build failed to run - your NVIDIA driver may be too old or a runtime DLL is missing." -ForegroundColor Yellow
-    Write-Host "  Reverting to the CPU build so Layla keeps working. Update your driver and try again later." -ForegroundColor Yellow
+    # A full-offload (-1) failure isn't necessarily a bad driver: on a small card a large model / large
+    # context simply OOMs in VRAM. Before giving up on the GPU, retry with a conservative PARTIAL offload
+    # so a big-model-on-6GB box still gets GPU acceleration instead of dropping all the way to CPU.
+    Write-Host "  Full GPU offload failed. Retrying with a partial offload (fits a bigger model on a smaller card) ..." -ForegroundColor Yellow
+    Set-GpuLayers 20
+    & $VPy scripts\selftest.py
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host ""
+        Write-Host "  Done - Layla runs on your GPU ($Gpu) with a PARTIAL offload (n_gpu_layers=20)." -ForegroundColor Green
+        Write-Host "  If you want more on the GPU, use a smaller model (install\bootstrap.ps1 -Prefer lite) or raise n_gpu_layers in agent\runtime_config.json." -ForegroundColor DarkGray
+        Write-Host "  Restart Layla (START.bat) if it is open." -ForegroundColor Green
+        exit 0
+    }
+    Write-Host "  Still failing on the GPU. Likely causes: NVIDIA driver too old for CUDA 12.4, a missing" -ForegroundColor Yellow
+    Write-Host "  runtime DLL, or not enough VRAM even for a partial offload. Reverting to the CPU build so" -ForegroundColor Yellow
+    Write-Host "  Layla keeps working. Update your driver (or try a smaller model), then re-run this script." -ForegroundColor Yellow
     uv pip install --python $VPy --reinstall $LlamaSpec --extra-index-url $LlamaIndexCpu --index-strategy unsafe-best-match
     Set-GpuLayers 0
     exit 1

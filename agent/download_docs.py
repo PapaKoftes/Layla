@@ -62,7 +62,9 @@ def safe_fetch(url: str, timeout: int = 10) -> str | None:
 
 def _load_sources() -> list[dict]:
     try:
-        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        # utf-8-sig: tolerate a BOM'd config like runtime_safety.load_config, else this silently
+        # ingests zero knowledge sources on a config Notepad has touched.
+        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
         return cfg.get("knowledge_sources", [])
     except Exception as e:
         print(f"Could not read runtime_config.json: {e}")

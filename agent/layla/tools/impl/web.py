@@ -33,17 +33,36 @@ TOOLS: dict = {}
 def _guard_web_result(result: dict, cfg: dict | None = None) -> dict:
     """Neutralize UNTRUSTED fetched web content before it enters the agent context: frame it as reference
     DATA (not instructions) and redact obvious prompt-injection markers. Ingested docs already get this;
-    web-fetch / browser tool output did not, so a hostile page could embed 'ignore previous instructions'.
-    Defense-in-depth behind the approval gate. Gated by doc_injection_guard_enabled (default on)."""
+    web-fetch / browser / search tool output did not, so a hostile page or search snippet could embed
+    'ignore previous instructions'. Covers single-body text fields (text/content/summary/abstract) AND
+    list-of-dict search hits (results[].{title,body,snippet,...}). Defense-in-depth behind the approval
+    gate. Gated by doc_injection_guard_enabled (default on)."""
     if not isinstance(result, dict) or not result.get("ok"):
         return result
     try:
-        from services.workspace.doc_ingestion import neutralize_untrusted
+        from services.workspace.doc_ingestion import neutralize_untrusted, redact_injection_markers
         enabled = bool((cfg or {}).get("doc_injection_guard_enabled", True))
-        for key in ("text", "content"):
+        # Single-body fields: full begin/end data-framing.
+        for key in ("text", "content", "summary", "abstract"):
             v = result.get(key)
             if isinstance(v, str) and v:
                 result[key] = neutralize_untrusted(v, enabled)
+        # Search-hit lists: redact markers per snippet (a framing block per hit would be noise) and flag
+        # the whole payload untrusted so downstream framing/treatment can key off it.
+        for list_key in ("results", "options", "suggestions", "related", "papers", "entries", "items", "links"):
+            hits = result.get(list_key)
+            if isinstance(hits, list):
+                for h in hits:
+                    if isinstance(h, dict):
+                        for k in ("title", "body", "snippet", "text", "summary", "description", "content", "abstract"):
+                            vv = h.get(k)
+                            if isinstance(vv, str) and vv:
+                                h[k] = redact_injection_markers(vv, enabled)
+                    elif isinstance(h, str) and h:
+                        idx = hits.index(h)
+                        hits[idx] = redact_injection_markers(h, enabled)
+                if enabled:
+                    result["_untrusted"] = True
     except Exception:
         pass
     return result
@@ -116,7 +135,7 @@ def browser_search(query: str) -> dict:
     """Search the web via DuckDuckGo. Returns top 8 results with titles, URLs, snippets."""
     try:
         from services.infrastructure.browser import search_web
-        return search_web(query)
+        return _guard_web_result(search_web(query))
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
 
@@ -175,7 +194,9 @@ def fetch_article(url: str) -> dict:
                 title = meta.title or ""
         except Exception:
             pass
-        return {"ok": True, "url": url, "title": title, "text": text[:10000], "chars": len(text)}
+        # Guard: fetch_article is step 4 of the built-in research plan ("read this page") — the prime
+        # injection vector. Neutralize the extracted body before it reaches the agent context.
+        return _guard_web_result({"ok": True, "url": url, "title": title, "text": text[:10000], "chars": len(text)})
     except ImportError:
         return {"ok": False, "error": "trafilatura not installed: pip install trafilatura"}
     except Exception as e:
@@ -192,17 +213,17 @@ def wiki_search(query: str, sentences: int = 8, lang: str = "en") -> dict:
         try:
             summary = wikipedia.summary(query, sentences=sentences, auto_suggest=True)
             page = wikipedia.page(query, auto_suggest=True)
-            return {
+            return _guard_web_result({
                 "ok": True,
                 "query": query,
                 "title": page.title,
                 "url": page.url,
                 "summary": summary,
                 "related": page.links[:10],
-            }
+            })
         except wikipedia.DisambiguationError as e:
             # Return top options on disambiguation
-            return {"ok": True, "query": query, "disambiguation": True, "options": e.options[:8]}
+            return _guard_web_result({"ok": True, "query": query, "disambiguation": True, "options": e.options[:8]})
         except wikipedia.PageError:
             results = wikipedia.search(query, results=5)
             return {"ok": False, "query": query, "error": "Page not found", "suggestions": results}
@@ -231,7 +252,8 @@ def ddg_search(query: str, max_results: int = 10, region: str = "wt-wt") -> dict
         from ddgs import DDGS  # was duckduckgo_search; upstream renamed the project + PyPI dist (O-3)
         with DDGS() as ddgs:
             results = list(ddgs.text(query, region=region, max_results=max_results))
-        out = {"ok": True, "query": query, "results": results, "count": len(results)}
+        # Guard BEFORE caching so the cached copy is neutralized too (search snippets are attacker-influenceable).
+        out = _guard_web_result({"ok": True, "query": query, "results": results, "count": len(results)}, cfg)
         try:
             import runtime_safety
             from services.retrieval.http_response_cache import set_cached
@@ -274,7 +296,7 @@ def arxiv_search(query: str, max_results: int = 5, sort_by: str = "relevance") -
                 "arxiv_id": r.entry_id.split("/")[-1],
                 "categories": r.categories[:3],
             })
-        return {"ok": True, "query": query, "results": papers, "count": len(papers)}
+        return _guard_web_result({"ok": True, "query": query, "results": papers, "count": len(papers)})
     except ImportError:
         return {"ok": False, "error": "arxiv not installed: pip install arxiv"}
     except Exception as e:
@@ -300,13 +322,13 @@ def http_request(url: str, method: str = "GET", body: str = "", headers: dict | 
         req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
         with safe_urlopen(req, timeout=timeout) as resp:  # SSRF #11: guards initial + redirect hops
             content = resp.read(80000).decode("utf-8", errors="replace")
-            return {
+            return _guard_web_result({
                 "ok": resp.status < 400,
                 "status": resp.status,
                 "url": url,
                 "text": content[:8000],
                 "headers": dict(resp.headers),
-            }
+            })
     except urllib.error.HTTPError as e:
         body_text = ""
         try:
@@ -405,11 +427,11 @@ def crawl_site(
         except Exception:
             continue
 
-    return {
+    return _guard_web_result({
         "ok": True, "start_url": url, "pages_visited": len(results),
         "pages_requested": max_pages, "same_domain": same_domain,
         "results": results,
-    }
+    })
 
 def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> dict:
     """
@@ -454,7 +476,7 @@ def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> 
             continue
         links.append({"url": link, "internal": is_internal, "domain": urlparse(link).netloc})
 
-    return {"ok": True, "source_url": url, "total_links": len(links), "internal": sum(1 for lnk in links if lnk["internal"]), "external": sum(1 for lnk in links if not lnk["internal"]), "links": links}
+    return _guard_web_result({"ok": True, "source_url": url, "total_links": len(links), "internal": sum(1 for lnk in links if lnk["internal"]), "external": sum(1 for lnk in links if not lnk["internal"]), "links": links})
 
 def check_url(url: str, timeout: int = 10) -> dict:
     """
@@ -510,7 +532,7 @@ def rss_feed(url: str, max_items: int = 20, include_content: bool = False) -> di
                 except Exception:
                     pass
             entries.append(item)
-        return {"ok": True, "url": url, "feed_title": feed.feed.get("title", ""), "feed_description": (feed.feed.get("description", "") or "")[:200], "entry_count": len(entries), "entries": entries}
+        return _guard_web_result({"ok": True, "url": url, "feed_title": feed.feed.get("title", ""), "feed_description": (feed.feed.get("description", "") or "")[:200], "entry_count": len(entries), "entries": entries})
     except ImportError:
         return {"ok": False, "error": "feedparser not installed: pip install feedparser"}
     except Exception as e:
