@@ -161,7 +161,10 @@ def browser_fill(url: str, fields: dict, submit_selector: str = "") -> dict:
     """Navigate to a URL, fill form fields {selector: value}, optionally submit."""
     try:
         from services.infrastructure.browser import fill_form
-        return fill_form(url, fields, submit_selector)
+        # fill_form returns the POST-SUBMIT page's innerText — untrusted external content, exactly like
+        # browser_navigate/browser_click, which both wrap their result. Route it through the same
+        # prompt-injection guard so a hostile landing page can't smuggle instructions into the context.
+        return _guard_web_result(fill_form(url, fields, submit_selector))
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
 

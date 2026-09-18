@@ -9,7 +9,7 @@ aspect: morrigan
 This document is a historical roadmap of how the tool surface grew. It tracks what
 was built and in what order.
 
-> **Current reality:** the live registry ships **202 registered tools** — the tier
+> **Current reality:** the live registry ships **207 registered tools** — the tier
 > counts below are historical milestones the project has long since passed, not the
 > current inventory. For the authoritative live count, `list_tools` reflects the
 > registry directly.

@@ -357,6 +357,6 @@ flowchart TB
 - [AGENTS.md](../AGENTS.md) — AI operations manual, hard rules, repo map
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — Request flow, state locations
 - [LAYLA_NORTH_STAR.md](../LAYLA_NORTH_STAR.md) — Canonical vision
-- [knowledge/layla-capabilities-map.md](../knowledge/layla-capabilities-map.md) — capabilities inventory (authoritative tool count: **195**, `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`)
+- [knowledge/layla-capabilities-map.md](../knowledge/layla-capabilities-map.md) — capabilities inventory (authoritative tool count: **207**, `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`)
 - [docs/CAPABILITIES.md](CAPABILITIES.md) — Capability registry, discovery, benchmark
 - [docs/TECH_STACK_AND_CAPABILITIES.md](TECH_STACK_AND_CAPABILITIES.md) — Tech stack reference
