@@ -303,16 +303,18 @@ jobs:
   inference-smoke:
     name: Inference smoke (real tiny model)
     runs-on: ubuntu-latest
-    # LAYLA_DATA_DIR is the data root the app AND conftest resolve config + models from. Set it here so
-    # the download step below writes the model into $LAYLA_DATA_DIR/models and its runtime config into
-    # $LAYLA_DATA_DIR/runtime_config.json — exactly where the two real-model steps look. Previously the
-    # model landed in <repo>/models while conftest redirected LAYLA_DATA_DIR to a fresh EMPTY tempdir at
-    # import, so test_inference_smoke found no .gguf and SKIPPED and test_completion could not load a
-    # model and swallowed the failure as status="error" — both gates went green having verified nothing.
-    env:
-      LAYLA_DATA_DIR: ${{ runner.temp }}/layla-smoke
     steps:
       - uses: actions/checkout@v4
+
+      # LAYLA_DATA_DIR is the data root the app AND conftest resolve config + models from. Set it (via
+      # $RUNNER_TEMP, valid only in a step's run: — the `runner` context is NOT available in job-level
+      # env:) so the download step writes the model into $LAYLA_DATA_DIR/models and its runtime config
+      # into $LAYLA_DATA_DIR/runtime_config.json — exactly where the two real-model steps look.
+      # Previously the model landed in <repo>/models while conftest redirected LAYLA_DATA_DIR to a fresh
+      # EMPTY tempdir at import, so test_inference_smoke found no .gguf and SKIPPED and test_completion
+      # could not load a model and swallowed the failure as status="error" — both gates verified nothing.
+      - name: Point LAYLA_DATA_DIR at a temp data root
+        run: echo "LAYLA_DATA_DIR=$RUNNER_TEMP/layla-smoke" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
