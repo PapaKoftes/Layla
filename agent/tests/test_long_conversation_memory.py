@@ -57,16 +57,23 @@ def _seed_messages(cid: str, pairs: int, *, quiet: bool = False) -> None:
         _run()
 
 
-def _wait_for_summary(timeout: float = 6.0) -> int:
-    """Poll until at least one durable summary row exists (or timeout) — the periodic trigger writes
-    on a daemon thread. Returns the final row count."""
+def _wait_for_liveness(effect: str, target: int, timeout: float = 15.0) -> bool:
+    """Poll until the liveness `effect` count reaches `target` (or timeout).
+
+    The periodic trigger runs on a DAEMON THREAD and, in summarize_conversation_to_durable_memory,
+    writes the conversation_summaries row FIRST and only then fires the liveness effect. So a poll on
+    the row can return while the liveness INSERT is still pending on that thread — the exact race that
+    intermittently reddened CI (`assert 0 >= 1`). Waiting on the liveness count instead (a) implies the
+    row was written and (b) synchronises on the very signal the test asserts. A delta target (not a bare
+    >= 1) keeps it correct even if some earlier effect already sits in the isolated DB. The 15s ceiling
+    absorbs a cold vector-store init on the daemon thread (which could push the row past the old 6s and
+    fail the OTHER way); it returns as soon as the count is reached, so a healthy run is ~1-3s."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        n = _summary_count()
-        if n >= 1:
-            return n
+        if _liveness_count(effect) >= target:
+            return True
         time.sleep(0.05)
-    return _summary_count()
+    return _liveness_count(effect) >= target
 
 
 # ── (a) durable write + 0-before / row-after, and (b) liveness, (c) recall ──────────────────────────
@@ -102,14 +109,18 @@ def test_durable_summary_written_zero_rows_before_row_after(isolated_db):
 # ── (a, via >=16 turns) the natural, append-driven periodic trigger ─────────────────────────────────
 def test_sixteen_turns_persists_a_summary(isolated_db):
     assert _summary_count() == 0
+    cc_before = _liveness_count("conversation_compacted")
 
     # 16 exchanges (32 messages) drive the every-N periodic trigger through the real append path.
     with patch("services.context.context_manager.summarize_messages", return_value=GOOD_SUMMARY):
         _seed_messages("conv-16turns", pairs=16)
-        n = _wait_for_summary()
+        # Wait on the liveness effect (fired AFTER the row on the daemon thread) — see _wait_for_liveness.
+        # This synchronises on the asserted signal and implies the row, killing the daemon-thread race
+        # that intermittently failed this test in CI.
+        fired = _wait_for_liveness("conversation_compacted", cc_before + 1)
 
-    assert n >= 1, "driving >=16 turns must persist at least one durable summary via the append trigger"
-    assert _liveness_count("conversation_compacted") >= 1
+    assert _summary_count() >= 1, "driving >=16 turns must persist at least one durable summary via the append trigger"
+    assert fired, "the append trigger must fire the conversation_compacted liveness effect"
 
 
 # ── (d) a 30-message session produces a recallable summary ──────────────────────────────────────────
