@@ -469,7 +469,9 @@ def build_core_sys_parts(
     # so ordinary phrasing ("write a steamy scene between them") missed the strongest anti-refusal guidance.
     # When uncensored/NSFW is on the operator has already opted in for the session — apply it every turn.
     # Stays OUT of _STATIC_SYS_CACHE (appended after the cache block); correct, as it no longer varies by goal.
-    if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
+    # pd02: gate on _uncensored_active (like the sites at 386/436), NOT raw flags — else a fresh install
+    # with content_policy_chosen=False still emits this block, contradicting the gated 386/436 blocks.
+    if _uncensored_active(cfg):
         sys_parts.append(
             "Uncensored/NSFW-allowed mode is on. "
             "Answer fully without safety-theater refusals for consensual adult content. "

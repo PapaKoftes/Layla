@@ -187,6 +187,13 @@ def main(argv: list[str]) -> int:
     })
     if kit.get("aspect"):
         cfg.setdefault("default_aspect", kit["aspect"])
+    # pd02 SAFETY GATE (mirrors install/checks.py:220): this is the friend-path config writer
+    # (INSTALL.bat -> bootstrap.ps1 -> provision_model.py), which never invokes the forced first-run
+    # content-policy choice. content_uncensored_active() treats a MISSING content_policy_chosen as
+    # "grandfathered = active", so without this seed a fresh friend-install would run uncensored/NSFW
+    # before ever being shown the choice. setdefault preserves an existing operator choice (True/False)
+    # and only seeds a fresh config to False (gated until the user picks).
+    cfg.setdefault("content_policy_chosen", False)
     if getattr(args, "spanish", False):
         cfg["custom_system_prefix"] = (
             "Eres Layla. Responde SIEMPRE en espanol (castellano) de forma clara y concisa. "
