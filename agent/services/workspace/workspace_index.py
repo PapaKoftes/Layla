@@ -25,6 +25,26 @@ _collection = None
 _parser = None
 _parser_failed = False
 
+# Directories never worth walking for code intelligence: VCS, caches, and (critically) dependency /
+# virtualenv trees. The workspace walkers below used to skip only .git/__pycache__/node_modules, so a
+# workspace containing a virtualenv (.venv with tens of thousands of package .py files) made every walk —
+# build_workspace_graph runs on the system-head build EACH TURN — read the entire venv, a multi-minute
+# stall on any real Python project a friend points Layla at. Matched by path PART, not substring.
+_SKIP_DIRS = frozenset({
+    ".git", "__pycache__", "node_modules", ".venv", "venv", ".tox", ".nox",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache", ".layla", "chroma_db",
+    "site-packages", ".eggs", ".idea", ".vscode",
+})
+
+
+def _skip_walk(f: Path, root: Path) -> bool:
+    """True if any directory component of f (relative to root) is a skip dir."""
+    try:
+        return bool(set(f.relative_to(root).parts[:-1]) & _SKIP_DIRS)
+    except Exception:
+        return False
+
+
 # Phase 0.3: workspace change detection (hash → invalidation)
 _workspace_hash_cache: dict[str, str] = {}  # root_str → last known hash
 _workspace_last_check: dict[str, float] = {}  # root_str → last check timestamp
@@ -130,7 +150,7 @@ def get_architecture_summary(workspace_root: str | Path) -> str:
         return ""
     parts: list[str] = []
     for f in root.rglob("*.py"):
-        if ".git" in str(f) or "__pycache__" in str(f) or "node_modules" in str(f):
+        if _skip_walk(f, root):
             continue
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
@@ -194,7 +214,7 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
     parser = _get_parser()
     for ext in extensions:
         for f in root.rglob(f"*{ext}"):
-            if ".git" in str(f) or "__pycache__" in str(f) or "node_modules" in str(f):
+            if _skip_walk(f, root):
                 continue
             try:
                 text = f.read_text(encoding="utf-8", errors="replace")
@@ -305,7 +325,7 @@ def build_workspace_graph(workspace_root: str | Path) -> dict[str, Any]:
     _workspace_graph_root = root
 
     for f in root.rglob("*.py"):
-        if ".git" in str(f) or "__pycache__" in str(f) or "node_modules" in str(f):
+        if _skip_walk(f, root):
             continue
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
