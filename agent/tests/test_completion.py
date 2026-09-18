@@ -216,8 +216,12 @@ def test_completion_report():
             stream_final=False,
         )
     except Exception as e:
+        import traceback
         result = {"status": "error", "sub_goals": [], "reflection_asked": False, "tool_calls": 0, "depth": 0}
-        print(f"autonomous_run error (report still emitted): {e}")
+        # Keep the report readable, but capture the real cause: the final assertion no longer accepts
+        # "error", so a raised exception FAILS the PR (it used to pass silently — the loop was never
+        # actually exercised because the model could not load). The traceback shows why.
+        print(f"autonomous_run raised (this now FAILS the gate): {e}\n{traceback.format_exc()}")
 
     report = []
     report.append("=" * 60)
@@ -248,5 +252,11 @@ def test_completion_report():
     for line in report:
         print(line)
 
-    assert result.get("status") in ("finished", "timeout", "tool_limit", "stream_pending", "system_busy", "error")
+    # "error" is deliberately NOT accepted: it means autonomous_run raised (e.g. the model could not
+    # load), which is exactly the "broken loop" this gate promises to catch. A real terminal status
+    # (finished/timeout/tool_limit/stream_pending/system_busy) proves the decision cycle actually ran.
+    assert result.get("status") in ("finished", "timeout", "tool_limit", "stream_pending", "system_busy"), (
+        f"decision loop did not reach a real terminal status: {result.get('status')!r} "
+        "(see the printed traceback above if this is 'error')"
+    )
     assert result.get("tool_calls", 0) <= 5
