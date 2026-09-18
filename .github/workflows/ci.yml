@@ -306,6 +306,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # LAYLA_DATA_DIR is the data root the app AND conftest resolve config + models from. Set it (via
+      # $RUNNER_TEMP, valid only in a step's run: — the `runner` context is NOT available in job-level
+      # env:) so the download step writes the model into $LAYLA_DATA_DIR/models and its runtime config
+      # into $LAYLA_DATA_DIR/runtime_config.json — exactly where the two real-model steps look.
+      # Previously the model landed in <repo>/models while conftest redirected LAYLA_DATA_DIR to a fresh
+      # EMPTY tempdir at import, so test_inference_smoke found no .gguf and SKIPPED and test_completion
+      # could not load a model and swallowed the failure as status="error" — both gates verified nothing.
+      - name: Point LAYLA_DATA_DIR at a temp data root
+        run: echo "LAYLA_DATA_DIR=$RUNNER_TEMP/layla-smoke" >> "$GITHUB_ENV"
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -321,19 +331,35 @@ jobs:
             --only-binary llama-cpp-python --prefer-binary
           pip install -r requirements.txt
 
-      - name: Download a tiny real model
+      - name: Download a tiny real model + write its runtime config into LAYLA_DATA_DIR
         run: |
-          mkdir -p models
           python - <<'PY'
-          import json, sys
+          import json, os, sys
           from pathlib import Path
           sys.path.insert(0, "agent")
           from install.model_downloader import download_model
+          data_dir = Path(os.environ["LAYLA_DATA_DIR"])
+          models = data_dir / "models"
+          models.mkdir(parents=True, exist_ok=True)
           d = json.load(open("agent/models/model_catalog.json"))
           m = next(x for x in d["models"] if x.get("name") == "smolLM2-360M-Q2_K")
-          r = download_model(m, models_dir=Path("models"), progress=False)
+          r = download_model(m, models_dir=models, progress=False)
           assert r.get("ok"), r
-          print("downloaded:", r.get("filename"))
+          fn = r["filename"]
+          assert (models / fn).exists(), fn
+          # The runtime config the real-model steps load: test_completion via load_config (resolves off
+          # LAYLA_DATA_DIR), test_inference_smoke via default_models_dir(). Bounded + deterministic for CI.
+          cfg = {
+              "model_filename": fn,
+              "models_dir": str(models),
+              "n_ctx": 2048, "n_gpu_layers": 0, "n_threads": 2,
+              "use_chroma": False, "resource_governor_enabled": False,
+              "max_tool_calls": 2, "max_runtime_seconds": 30,
+              "scheduler_study_enabled": False, "embedder_prewarm_enabled": False,
+              "llm_prewarm_enabled": False,
+          }
+          (data_dir / "runtime_config.json").write_text(json.dumps(cfg, indent=2))
+          print("downloaded:", fn, "-> config at", data_dir / "runtime_config.json")
           PY
 
       - name: Prefetch embedding model (deterministic, like a real install)
