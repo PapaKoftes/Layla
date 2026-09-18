@@ -209,7 +209,7 @@ Switch in the sidebar or invoke by name:
 - Web search and article extraction (installed by the installer)  
 - Playwright browser automation + screenshots — the Python package is installed, but the browser itself is not: run `playwright install chromium` once, or these tools return "playwright not installed"  
 - Repo search (grep/glob), Git operations  
-- 200 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
+- 207 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
 
 **Memory**
 

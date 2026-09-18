@@ -34,7 +34,14 @@ def create_mission(goal: str, workspace_root: str = "", allow_write: bool = Fals
             digest = prior_plans_digest(str(workspace_root).strip(), limit=8)
         except Exception:
             digest = ""
-    plan = create_plan(goal, max_steps=MAX_MISSION_STEPS, cfg=cfg, prior_plans_digest=digest)
+    # Honor the max_mission_steps config knob (both config files ship it) instead of the hardcoded
+    # constant, which made the advertised key inert. Clamped to [1, 100] so a config typo cannot
+    # produce a 1-step or runaway mission; the constant remains the default when unset/invalid.
+    try:
+        max_steps = max(1, min(int((cfg or {}).get("max_mission_steps", MAX_MISSION_STEPS)), 100))
+    except (TypeError, ValueError):
+        max_steps = MAX_MISSION_STEPS
+    plan = create_plan(goal, max_steps=max_steps, cfg=cfg, prior_plans_digest=digest)
     if not plan:
         return None
     mission_id = str(uuid.uuid4())
