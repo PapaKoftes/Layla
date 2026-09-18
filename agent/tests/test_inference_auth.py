@@ -33,7 +33,7 @@ def test_inference_api_key_is_treated_as_secret():
 
 
 def test_same_origin_and_plaintext_helpers():
-    from services.llm.inference_router import _same_origin, _is_plaintext_nonlocal
+    from services.llm.inference_router import _is_plaintext_nonlocal, _same_origin
     assert _same_origin("https://api.x.co/v1", "https://api.x.co/other")
     assert not _same_origin("https://api.x.co", "https://evil.y.co")
     assert not _same_origin("https://api.x.co", "http://api.x.co")   # scheme differs
@@ -44,9 +44,10 @@ def test_same_origin_and_plaintext_helpers():
 
 def test_bearer_token_not_leaked_to_crossorigin_fallback(monkeypatch):
     """The Bearer token must go ONLY to the primary origin, never to a cross-host failover URL."""
-    import urllib.request
-    import urllib.error
     import threading
+    import urllib.error
+    import urllib.request
+
     from services.llm import inference_router as ir
 
     monkeypatch.setattr("services.safety.secret_store.get_secret", lambda name, default=None: default, raising=False)

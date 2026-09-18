@@ -52,14 +52,16 @@ def _guard_web_result(result: dict, cfg: dict | None = None) -> dict:
         for list_key in ("results", "options", "suggestions", "related", "papers", "entries", "items", "links"):
             hits = result.get(list_key)
             if isinstance(hits, list):
-                for h in hits:
+                # enumerate, not hits.index(h): index() returns the FIRST match, so a list with
+                # duplicate bare strings (e.g. extract_links with repeated URLs) would redact the
+                # wrong element and skip the duplicate. The positional index is always correct.
+                for idx, h in enumerate(hits):
                     if isinstance(h, dict):
                         for k in ("title", "body", "snippet", "text", "summary", "description", "content", "abstract"):
                             vv = h.get(k)
                             if isinstance(vv, str) and vv:
                                 h[k] = redact_injection_markers(vv, enabled)
                     elif isinstance(h, str) and h:
-                        idx = hits.index(h)
                         hits[idx] = redact_injection_markers(h, enabled)
                 if enabled:
                     result["_untrusted"] = True
