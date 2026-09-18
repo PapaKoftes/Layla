@@ -119,10 +119,18 @@ def test_pd02_gate_blocks_uncensored_prompt_content_on_fresh_install():
         ))
 
     fresh = {"uncensored": True, "nsfw_allowed": True, "content_policy_chosen": False}
-    assert "Refuse clearly only for genuine harm" not in _parts(fresh)
+    fresh_parts = _parts(fresh)
+    assert "Refuse clearly only for genuine harm" not in fresh_parts
+    # ...and the SECOND anti-refusal block (BL-285, the "mode is on" line) must ALSO be gated. It used
+    # to read raw cfg flags, so a fresh install emitted it even while the 386 block was gated — a
+    # self-contradictory prompt. Both wordings must be absent until the choice is made.
+    assert "Uncensored/NSFW-allowed mode is on" not in fresh_parts
+    assert "without safety-theater refusals" not in fresh_parts
 
     chosen = {"uncensored": True, "nsfw_allowed": True, "content_policy_chosen": True}
-    assert "Refuse clearly only for genuine harm" in _parts(chosen)
+    chosen_parts = _parts(chosen)
+    assert "Refuse clearly only for genuine harm" in chosen_parts
+    assert "Uncensored/NSFW-allowed mode is on" in chosen_parts
 
 
 def test_installer_seeds_content_policy_chosen_false_so_fresh_install_is_gated():
