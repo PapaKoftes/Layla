@@ -105,6 +105,31 @@ def _openai_compatible_base_urls(cfg: dict) -> list[str]:
     return out
 
 
+def _same_origin(a: str, b: str) -> bool:
+    """True when two URLs share scheme+host+port. Used to keep the Bearer token on the host it belongs
+    to and NOT leak it to cross-host failover endpoints."""
+    from urllib.parse import urlsplit
+    try:
+        pa, pb = urlsplit(a), urlsplit(b)
+        return (pa.scheme, pa.hostname, pa.port) == (pb.scheme, pb.hostname, pb.port)
+    except Exception:
+        return a == b
+
+
+def _is_plaintext_nonlocal(url: str) -> bool:
+    """True when url is http:// to a non-loopback host — sending a Bearer token there exposes it in cleartext."""
+    from urllib.parse import urlsplit
+    try:
+        p = urlsplit(url)
+        host = (p.hostname or "").lower()
+        return p.scheme == "http" and host not in ("localhost", "127.0.0.1", "::1", "")
+    except Exception:
+        return False
+
+
+_tls_warned: set[str] = set()
+
+
 def run_completion_openai_compatible(
     cfg: dict,
     prompt: str,
@@ -139,13 +164,25 @@ def run_completion_openai_compatible(
     primary_url = urls[0]
 
     _headers = _auth_headers(cfg)
+    _has_auth = "Authorization" in _headers
+    _plain_headers = {"Content-Type": "application/json"}
+    # TLS hygiene: warn once per host if a Bearer token would go over cleartext http:// to a non-loopback
+    # endpoint. We still send it (the operator configured it), but flag the exposure.
+    if _has_auth and _is_plaintext_nonlocal(primary_url) and primary_url not in _tls_warned:
+        _tls_warned.add(primary_url)
+        logger.warning("inference_api_key is being sent over plaintext http:// to a non-local host (%s) - "
+                       "use https:// so the token is not exposed in transit", primary_url)
 
     def _one_request(url: str) -> urllib.request.Request:
+        # Scope the Bearer token to the PRIMARY origin only. inference_api_key belongs to
+        # llama_server_url; attaching it to cross-host failover URLs would leak a provider-scoped
+        # secret to a different host. Same-origin fallbacks still get it.
+        headers = _headers if (_has_auth and _same_origin(url, primary_url)) else _plain_headers
         return urllib.request.Request(
             _openai_compatible_url(url) + "/v1/chat/completions",
             data=data,
             method="POST",
-            headers=_headers,
+            headers=headers,
         )
 
     try:

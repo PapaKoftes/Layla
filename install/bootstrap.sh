@@ -43,8 +43,10 @@ VPY=".venv/bin/python"
 # CPU vs CUDA llama.cpp build. GPU offload (n_gpu_layers, set by provision_model when a GPU is
 # detected) does nothing unless the CUDA wheel is installed - the CPU wheel silently ignores it.
 # Auto-detect an NVIDIA card via nvidia-smi (Linux only; macOS uses the CPU wheel - a Metal build
-# needs a source compile). ACCEL=gpu|cpu forces it. The CUDA wheel bundles the CUDA 12.4 runtime;
-# if it fails to load, the self-test step falls back to the CPU wheel so the install still works.
+# needs a source compile). ACCEL=gpu|cpu forces it. The prebuilt CUDA wheel links against the CUDA
+# runtime (cudart/cublas) but does NOT vendor it, so on a box with no CUDA toolkit we also install the
+# nvidia-*-cu12 runtime wheels (see _add_cuda_runtime below). If the GPU build still fails to load, the
+# self-test step falls back to the CPU wheel so the install always ends up working.
 USE_GPU=0
 GPU_NAME=""
 if [ "${ACCEL:-auto}" != "cpu" ] && [ "$(uname -s)" = "Linux" ] && command -v nvidia-smi >/dev/null 2>&1; then
@@ -97,6 +99,12 @@ else
 fi
 uv pip install --python "$VPY" "$LLAMA_SPEC" \
   --extra-index-url "$LLAMA_INDEX" --index-strategy unsafe-best-match
+# The prebuilt CUDA wheel links against cudart/cublas but does not vendor them; install the nvidia
+# runtime wheels so llama.cpp can load them on a box with no CUDA toolkit (mirrors the Windows path).
+# If the GPU build still fails, the self-test step below reverts to the CPU wheel.
+if [ "$USE_GPU" = "1" ]; then
+  uv pip install --python "$VPY" nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 || true
+fi
 # torch: Linux uses the CPU-only wheel index (no CUDA, smaller). macOS wheels are NOT on that index
 # (download.pytorch.org/whl/cpu has no macOS build) — pinning it there made the install fail on Macs,
 # so on Darwin install torch from the default PyPI index instead.

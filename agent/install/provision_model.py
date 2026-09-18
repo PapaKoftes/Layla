@@ -172,7 +172,9 @@ def main(argv: list[str]) -> int:
     cfg: dict = {}
     if cfg_path.exists():
         try:
-            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            # utf-8-sig: a BOM'd config (Notepad) must be READ, not discarded - else re-provisioning
+            # silently drops every existing setting and starts fresh. Matches runtime_safety.load_config.
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8-sig"))
         except Exception:
             cfg = {}
     s = kit["settings"]
