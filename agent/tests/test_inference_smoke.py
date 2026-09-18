@@ -46,7 +46,16 @@ def _text(out) -> str:
 def test_real_run_completion_one_turn(monkeypatch):
     model = _smoke_model()
     if not model:
-        pytest.skip("no real .gguf available for the smoke")
+        # FAIL, don't skip: the module-level skipif already gated this to the real-LLM job
+        # (LAYLA_TEST_REAL_LLM set). Reaching here with no model means the CI wiring that puts the GGUF
+        # where the test looks has drifted — a skip would silently re-hollow the gate (which it did:
+        # the model went to <repo>/models while conftest pointed default_models_dir at an empty tempdir).
+        import runtime_safety as _rs
+        pytest.fail(
+            "real-LLM smoke: no .gguf found. Set LAYLA_SMOKE_MODEL, or download the model into "
+            f"$LAYLA_DATA_DIR/models (default_models_dir()={_rs.default_models_dir()}). "
+            "A missing model here is a CI setup failure, not a legitimate skip."
+        )
 
     import runtime_safety as rs
     cfg = dict(rs.load_config())
