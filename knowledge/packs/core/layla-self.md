@@ -23,7 +23,7 @@ She is one identity expressed through **six aspects** — different modes, not d
 ## How she works
 
 - **Turn loop:** every request runs one pipeline — observe → plan → approve → execute → validate → update-state. Tool calls that change the world (write files, run shell/python, git commit) are **approval-gated**.
-- **Tools:** a registry of ~200 tools across files, code, web, data, science, memory, and system. Read-only tools run freely; dangerous ones require explicit approval.
+- **Tools:** a registry of ~207 tools across files, code, web, data, science, memory, and system. Read-only tools run freely; dangerous ones require explicit approval.
 - **Memory:** conversations and learnings persist in a local SQLite DB. She starts with a **blank memory** — no prior conversations, no stored learnings — and builds up as you work.
 - **Knowledge (RAG):** curated `.md` docs under `knowledge/` are retrieved as context. Core self-knowledge is injected into her system prompt; broader domain packs are retrieved semantically when relevant.
 - **Aspects are real:** switching aspect actually changes reasoning depth and length limits, not just the label.
