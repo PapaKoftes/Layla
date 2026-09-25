@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Use an authenticated OpenAI-compatible server (a cloud model, or a secured vLLM).** Set `inference_api_key` and Layla sends `Authorization: Bearer …`. The key is kept in the OS keyring and hidden in Settings. Local stays the default.
 
 ### Fixed
+- **Installed builds saved models outside Layla's data folder.** On first launch the per-user config was copied from the example, which pins `models_dir: ~/.layla/models`, so downloaded models landed in `~/.layla` instead of `%LOCALAPPDATA%\Layla\models`, and uninstalling ("delete Layla data") left gigabytes behind. New installs now keep models in the data folder. Existing configs aren't changed and their models are still found. (Found by the new clean-machine install gate.)
 - **Multi-minute stall on the first message in a Python project.** Code analysis read and parsed every file inside `.venv` and cache folders on every turn. They're skipped now (measured: 400 s+ → 7.5 s).
 - **GPU install:** re-running the installer now actually switches a CPU install to the GPU build. Enabling the GPU no longer aborts halfway and leaves the CUDA files missing. If the GPU self-test fails it retries with partial offload. The installer only says "runs on your NVIDIA GPU" after checking that it really does.
 - **Config files saved with a byte-order mark (BOM) are now read correctly by the install-time tools too** (GPU setup, model provisioning, docs download), matching the app itself.
