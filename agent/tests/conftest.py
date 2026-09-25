@@ -249,10 +249,23 @@ def mock_config():
     }
 
 
+def _drain_derived_writes(timeout_total: float = 10.0) -> None:
+    try:
+        from services.agent.turn_commit import join_derived_writes
+        join_derived_writes(timeout_total=timeout_total)
+    except Exception:
+        pass
+
+
 @pytest.fixture
 def isolated_db(tmp_path):
     """Function-scoped isolated SQLite DB for tests that need real DB operations."""
     db_path = tmp_path / "test_layla.db"
+    # Drain derived-memory writer threads (outcome-memory/reflection, auto-learn, title-synth...) left
+    # running by a PRIOR test before patching _DB_PATH. They resolve _DB_PATH at write time, so a slow one
+    # otherwise lands its rows in THIS test's fresh DB — the observed CI flake where two "Reflection (read
+    # the config...)" rows from test_streamed_turns_are_evaluated appeared in a system_busy no-learn test.
+    _drain_derived_writes()
     with patch("layla.memory.db._DB_PATH", db_path), \
          patch("layla.memory.db_connection._DB_PATH", db_path):
         import layla.memory.db as db_mod
@@ -281,6 +294,7 @@ def isolated_db(tmp_path):
         try:
             yield db_path
         finally:
+            _drain_derived_writes()  # this test's own writers finish against ITS db, not the next one
             try:
                 from layla.memory.db_connection import close_thread_connection as _cc2
                 _cc2()

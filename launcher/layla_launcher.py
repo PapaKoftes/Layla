@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import json
 import os
 import shutil
 import signal
@@ -109,16 +110,29 @@ def _ensure_data_dir() -> Path:
 
 
 def _seed_runtime_config(install_root: Path, data: Path) -> None:
+    """First launch only: seed the per-user config from the example.
+
+    The example pins ``models_dir: ~/.layla/models`` (right for a source checkout), but an installed build
+    keeps ALL per-user state under the data dir — the uninstaller's "delete Layla data" offer covers
+    ``<data>/models``, and a pinned home path left multi-GB models behind. So drop ``models_dir`` and let
+    runtime_safety.default_models_dir() (``<data>/models``) own it. Existing configs are never touched.
+    """
     cfg = data / "runtime_config.json"
     if cfg.is_file():
         return
     for ex in (install_root / "runtime_config.example.json", install_root / "agent" / "runtime_config.example.json"):
         if ex.is_file():
             try:
-                shutil.copy2(ex, cfg)
+                seeded = json.loads(ex.read_text(encoding="utf-8-sig"))
+                seeded.pop("models_dir", None)
+                cfg.write_text(json.dumps(seeded, indent=2), encoding="utf-8")
                 return
-            except OSError:
-                pass
+            except (OSError, ValueError):
+                try:
+                    shutil.copy2(ex, cfg)  # unparseable example: seed verbatim rather than not at all
+                    return
+                except OSError:
+                    pass
 
 
 def _pick_python(install_root: Path) -> Path | None:

@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  # Build + packaged smoke + clean-VM install run pre-merge on packaging changes and on demand, so a
+  # broken installer is caught BEFORE a tag. Publishing stays tag-only (see publish-release `if:`).
+  pull_request:
+    paths:
+      - "installer/**"
+      - "launcher/**"
+      - "agent/requirements.txt"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
 
 jobs:
   build-windows-installer:
@@ -22,6 +31,7 @@ jobs:
       # client's auto-updater compares the release tag to a stale __version__ and re-downloads
       # forever. This guard makes that drift a failed release instead of a shipped one.
       - name: Verify tag matches version.py
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -58,8 +68,36 @@ jobs:
             installer/output/*.exe
             installer/output/SHA256SUMS.txt
 
-  publish-release:
+  # A SEPARATE fresh VM: no repo checkout (only the test script), no Python on PATH, default user profile.
+  # Installs the built .exe silently and drives the real first-run path to a real model reply. This is
+  # the "works on a new PC" gate — every friend-install failure lived between the build box and this.
+  clean-install-test:
     needs: build-windows-installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Fetch only the test script (no repo on this box)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: installer/clean_install_test.ps1
+          sparse-checkout-cone-mode: false
+          path: gate
+      - name: Download built installer
+        uses: actions/download-artifact@v4
+        with:
+          name: layla-windows-installer
+          path: dist-release
+      - name: Install on a clean box and get a real reply
+        shell: powershell   # Windows PowerShell 5.1 - what a user's PC actually runs
+        run: |
+          $inst = Get-ChildItem dist-release -Filter "Layla-Setup-*.exe" | Select-Object -First 1
+          if (-not $inst) { Write-Error "no installer artifact"; exit 1 }
+          & ./gate/installer/clean_install_test.ps1 -Installer $inst.FullName
+          exit $LASTEXITCODE
+
+  publish-release:
+    needs: [build-windows-installer, clean-install-test]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write   # required to create the GitHub Release
