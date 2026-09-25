@@ -5,14 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Release state:** the current code is **1.7.5** (`agent/version.py`), tagged **`v1.7.5`**. The release
-> build runs a packaged-smoke gate (it launches the real installer payload and checks `/health` + the
-> embedder) so a broken installer cannot ship. Prior tags: `v1.7.0`, `v1.5.0`, `v1.0.0`. (The earlier
-> `[2.0.0] — 2026-02-22` entry was a mis-number for the first release and is corrected to `[1.0.0]`,
-> matching the `v1.0.0` tag.)
+> **Release state:** the current code is **1.7.6** (`agent/version.py`), tagged **`v1.7.6`**. The release
+> build runs two gates before anything publishes: a packaged smoke on the build machine (launches the real
+> payload, checks `/health` + the embedder), and a **clean-machine install** on a separate fresh Windows VM
+> (silent install, first-run model download through the app, a real model reply). Prior tags: `v1.7.5`,
+> `v1.7.0`, `v1.5.0`, `v1.0.0`. (The earlier `[2.0.0] — 2026-02-22` entry was a mis-number for the first
+> release and is corrected to `[1.0.0]`, matching the `v1.0.0` tag.)
 
 ---
 
+
+## [1.7.6] — 2026-09-25
+
+### Security
+- **Web content can no longer pose as instructions.** Everything fetched from the web (page fetches, browser page text and form results, search results, Wikipedia, arXiv, RSS, crawls, raw HTTP requests, research-plan article fetches) is now fenced as untrusted data, with injection markers ("ignore previous instructions", fake role labels, etc.) redacted, including inside individual search hits.
+- **An inference API key is only ever sent to the server you configured.** It's never attached to failover URLs on other hosts, and you get a warning if it would travel over plain `http://` to a non-local machine.
+- **A fresh install stays in the safe content mode until you make the first-run choice.** Two paths used to turn uncensored mode on before you'd chosen: the model-provisioning config writer, and one prompt block that read the raw setting.
+
+### Added
+- **Use an authenticated OpenAI-compatible server (a cloud model, or a secured vLLM).** Set `inference_api_key` and Layla sends `Authorization: Bearer …`. The key is kept in the OS keyring and hidden in Settings. Local stays the default.
+
+### Fixed
+- **Installed builds saved models outside Layla's data folder.** On first launch the per-user config was copied from the example, which pins `models_dir: ~/.layla/models`, so downloaded models landed in `~/.layla` instead of `%LOCALAPPDATA%\Layla\models`, and uninstalling ("delete Layla data") left gigabytes behind. New installs now keep models in the data folder. Existing configs aren't changed and their models are still found. (Found by the new clean-machine install gate.)
+- **Multi-minute stall on the first message in a Python project.** Code analysis read and parsed every file inside `.venv` and cache folders on every turn. They're skipped now (measured: 400 s+ → 7.5 s).
+- **GPU install:** re-running the installer now actually switches a CPU install to the GPU build. Enabling the GPU no longer aborts halfway and leaves the CUDA files missing. If the GPU self-test fails it retries with partial offload. The installer only says "runs on your NVIDIA GPU" after checking that it really does.
+- **Config files saved with a byte-order mark (BOM) are now read correctly by the install-time tools too** (GPU setup, model provisioning, docs download), matching the app itself.
+- **`max_mission_steps` now takes effect.** Three settings that did nothing were removed from the example config, and the tool count in the docs is corrected to 207 everywhere (a test now pins it).
+
+### Release engineering
+- **New clean-machine install gate.** Every release is now installed on a separate fresh Windows VM with no repo and no Python, and has to complete a first-run model download and a real model reply before it can publish. The same gate also runs on PRs that change packaging.
+- The two real-model CI checks now actually run the model. Before, they passed without loading anything: the smoke test couldn't find the model and skipped, and the loop test counted `error` as a pass.
+- Fixed two flaky tests, both caused by leftover background threads. A test's background writes could land in the next test's database; the `isolated_db` fixture now waits for them to finish.
 
 ## [1.7.5] — 2026-08-26
 
