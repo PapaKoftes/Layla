@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the agent didn't use its tools with a real model
+Found by driving the real app with the real model (jinx-20b) rather than the test suite, which mocks the model. Asked to read a file, Layla answered without reading it and printed `read_file("…")` as text. Asked to create a file, it didn't, then said it had.
+- **New users got an agent that avoided even read-only tools.** On a fresh install every operator is "unknown", and the new-operator caution told the model to prefer answering over using tools. The caution now covers *changes* only (writing, running, deleting, installing). Reading and inspecting are always allowed.
+- **Retrieved memories could make write requests read-only.** Tool selection classified the request *after* memories were appended to it. Past 400 characters that read as "reasoning", whose tool set is read-only, so `write_file` was never offered, and it got worse the more Layla remembered. Tool selection now classifies your message alone.
+- **gpt-oss models (Jinx, gpt-oss-20b) now get their own chat format.** Raw text left them mid-reasoning. On the real decision prompts the right tool *and* file was picked in 2 of 6 cases before and 5 of 6 after. Other models are unchanged.
+- **Correct tool calls are no longer thrown away.** A decision like `{"action":"write_file", …}` (the tool's name in `action`) was rejected, and the turn fell back to a reply that only *described* the write. A decision's "thought" could also run past its token limit and cut off the JSON. Both now parse.
+- Live result on jinx-20b (CPU): reading a named file now runs `read_file` and returns the right content, in 3 out of 3 runs. **Writing a file is still unreliable on this model**: the model often answers instead of calling `write_file`. The approval gate is unchanged.
+
+### Privacy
+- **The vector database no longer tries to send usage telemetry.** ChromaDB's default settings turn on anonymous PostHog telemetry. Sending only failed by accident, because of a library version mismatch. Every ChromaDB client is now created with telemetry off, and a test fails if new code goes around that.
+
+### Fixed — other
+- A scheduled job turned `lens_knowledge/sources/README.md` (folder docs) into a "README" lens that was injected into prompts as domain knowledge.
+- LAN discovery advertised port 8000 even when Layla was running on another port (after moving off a busy 8000, or started with `--port`), so other devices were sent to a dead port.
+
 ### Fixed — features that never worked on an installed copy
 The installer puts Layla in `C:\Program Files\Layla`, which a normal Windows user can't write to. Every feature that saved something inside that folder failed on every installed copy, while all the tests (which run from source) passed. That data is now saved in your own Layla data folder (`%LOCALAPPDATA%\Layla`). Running from source is unchanged.
 - **Approvals.** Any tool that needs your approval (writing a file, running code, restoring a file checkpoint) crashed the turn instead of asking you. Approve, deny and the audit log failed the same way.

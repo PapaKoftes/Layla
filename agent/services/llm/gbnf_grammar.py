@@ -103,7 +103,9 @@ def build_decision_grammar(valid_tools: Iterable[str] | None) -> str:
         '"\\"action\\"" ws ":" ws action '
         '( ws "," ws "\\"tool\\"" ws ":" ws tool )? '
         '( ws "," ws "\\"args\\"" ws ":" ws object )? '
-        '( ws "," ws "\\"thought\\"" ws ":" ws string )? '
+        # Bounded: the decision budget is 80 tokens, and an unbounded thought ran past it mid-string on
+        # jinx-20b, so the truncated JSON failed to parse and the whole step was discarded.
+        '( ws "," ws "\\"thought\\"" ws ":" ws shortstr )? '
         '( ws "," ws "\\"priority_level\\"" ws ":" ws priority )? '
         '( ws "," ws "\\"objective_complete\\"" ws ":" ws boolean )? '
         '( ws "," ws "\\"revised_objective\\"" ws ":" ws string )? '
@@ -116,6 +118,7 @@ def build_decision_grammar(valid_tools: Iterable[str] | None) -> str:
             f"action ::= {_alternation(_ACTIONS)}",
             f"tool ::= {tool_rule}",
             f"priority ::= {_alternation(_PRIORITIES)}",
+            'shortstr ::= "\\"" ( [^"\\\\] | "\\\\" . ){0,160} "\\""',
             _JSON_SCAFFOLD,
         ]
     ) + "\n"
@@ -159,8 +162,10 @@ def run_gbnf_agent_decision(
         return None
 
     try:
+        from services.llm.prompt_format import format_raw_prompt
+
         out = llm.create_completion(
-            prompt,
+            format_raw_prompt(llm, prompt),
             max_tokens=max_tokens,
             temperature=temperature,
             grammar=grammar,
@@ -237,8 +242,11 @@ def run_gbnf_memory_extraction(
         logger.debug("gbnf: memory grammar build/compile failed: %s", e)
         return None
     try:
+        from services.llm.prompt_format import format_raw_prompt
+
         out = llm.create_completion(
-            prompt, max_tokens=max_tokens, temperature=temperature, grammar=grammar, stream=False
+            format_raw_prompt(llm, prompt), max_tokens=max_tokens, temperature=temperature, grammar=grammar,
+            stream=False,
         )
         text = (out.get("choices") or [{}])[0].get("text") or ""
     except Exception as e:

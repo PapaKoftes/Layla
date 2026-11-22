@@ -178,8 +178,8 @@ def _get_collection():
     if _collection is not None:
         return _collection
     try:
-        import chromadb
-        client = chromadb.PersistentClient(path=str(WORKSPACE_INDEX_PATH))
+        from layla.memory.vector_store import chroma_client
+        client = chroma_client(WORKSPACE_INDEX_PATH)
         _collection = client.get_or_create_collection(
             name=_COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
@@ -499,8 +499,8 @@ def invalidate_if_changed(workspace_root: str | Path) -> bool:
         return False
     logger.info("workspace_index: changes detected in %s — invalidating semantic cache", root_str)
     try:
-        import chromadb
-        client = chromadb.PersistentClient(path=str(WORKSPACE_INDEX_PATH))
+        from layla.memory.vector_store import chroma_client
+        client = chroma_client(WORKSPACE_INDEX_PATH)
         try:
             client.delete_collection(_COLLECTION_NAME)
             logger.info("workspace_index: Chroma collection '%s' deleted for re-index", _COLLECTION_NAME)

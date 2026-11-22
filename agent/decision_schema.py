@@ -125,6 +125,14 @@ def parse_decision(text: str, valid_tools: frozenset[str]) -> dict | None:
     if not isinstance(data, dict):
         return None
 
+    # Models often put the tool's name in "action": {"action":"write_file","tool":"write_file","args":{…}}.
+    # That is an unambiguous tool call (seen live on jinx-20b), not a reason to discard the decision and
+    # fall through to a plain reply that only *describes* the write.
+    _act = str(data.get("action") or "").strip()
+    _tool = str(data.get("tool") or "").strip()
+    if _act.lower() not in ("tool", "reason", "none", "think", "") and _act in valid_tools and _tool in ("", _act):
+        data = {**data, "action": "tool", "tool": _act}
+
     if _HAS_PYDANTIC and BaseModel is not None:
         try:
             AgentDecision.model_validate(data)

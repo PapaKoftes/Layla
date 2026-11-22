@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import platform
 import socket
 import threading
@@ -271,7 +272,9 @@ def start_service(cfg: dict | None = None) -> bool:
             device_name = (cfg.get("mdns_device_name") or "").strip() or platform.node() or "layla-device"
             tier = (cfg.get("hardware_tier") or "").strip() or detect_hardware_tier()
             models = _get_available_models(cfg)
-            port = int(cfg.get("port", 8000))
+            # The BOUND port (serve.py / the launcher export it, incl. a relocation off a busy 8000); the
+            # config value is only the request. Advertising the wrong one sends LAN peers to a dead port.
+            port = int((os.environ.get("LAYLA_PORT") or "").strip() or cfg.get("port", 8000))
             version = _get_version()
             lan_ip = _get_lan_ip()
 

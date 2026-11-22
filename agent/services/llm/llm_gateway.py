@@ -777,6 +777,8 @@ def get_stop_sequences():
         # ChatML/harmony + SentencePiece (Mistral/Llama-2 "</s>") + Llama-3 turn tokens — stop generation
         # on them so a chat-template/quant mismatch can't emit the EOS as literal trailing residue.
         "<|endoftext|>", "<|im_end|>", "</s>", "<|eot_id|>", "<|eom_id|>", "<|end_of_text|>",
+        # gpt-oss / harmony end-of-message tokens (prompt_format wraps harmony models' prompts).
+        "<|return|>", "<|end|>",
     ]
     import runtime_safety
     cfg = runtime_safety.load_config()

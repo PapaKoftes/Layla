@@ -111,6 +111,7 @@ def main() -> int:
         return 2
 
     serve_port = int(decision["port"])  # "start" or "relocated"
+    os.environ["LAYLA_PORT"] = str(serve_port)  # the port actually bound — mDNS advertises it to LAN peers
     try:
         import uvicorn
     except Exception as exc:  # pragma: no cover - environment dependent

@@ -408,6 +408,19 @@ def embed_batch(texts: list[str]) -> list:
     return [v.astype("float32") for v in vecs]
 
 
+def chroma_client(path):
+    """The ONE place a ChromaDB client is built. chromadb's default Settings enable anonymized product
+    telemetry (PostHog) — an outbound call per client start / collection op, which VALUES.md forbids.
+    It only failed by accident (posthog API drift), so turn it off explicitly for every client."""
+    import chromadb
+    from chromadb.config import Settings
+
+    # With telemetry off chromadb sets posthog.disabled, but posthog>=6 changed capture()'s signature, so
+    # chromadb still logs a TypeError per event ("capture() takes 1 positional argument") — noise, not a send.
+    logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+    return chromadb.PersistentClient(path=str(path), settings=Settings(anonymized_telemetry=False))
+
+
 def _get_chroma_collection():
     """Get or initialize ChromaDB learnings collection. Thread-safe with RLock."""
     global _chroma_collection, _chroma_lock
@@ -427,8 +440,7 @@ def _get_chroma_collection():
             _chroma_collection = get_fallback_collection("learnings", _chroma_path())
             logger.info("vector_store: chromadb absent — using compiler-free fallback store (learnings)")
             return _chroma_collection
-        import chromadb
-        client = chromadb.PersistentClient(path=str(_chroma_path()))
+        client = chroma_client(_chroma_path())
         _chroma_collection = client.get_or_create_collection(
             name="learnings",
             metadata={"hnsw:space": "cosine"},
@@ -471,9 +483,7 @@ def rebuild_collection() -> dict:
     """
     global _chroma_collection
     try:
-        import chromadb
-
-        client = chromadb.PersistentClient(path=str(_chroma_path()))
+        client = chroma_client(_chroma_path())
         try:
             client.delete_collection("learnings")
             logger.info("ChromaDB: deleted old 'learnings' collection for rebuild")
@@ -664,8 +674,7 @@ def _get_knowledge_collection():
             _knowledge_collection = get_fallback_collection("knowledge", _chroma_path())
             logger.info("vector_store: chromadb absent — using compiler-free fallback store (knowledge)")
             return _knowledge_collection
-        import chromadb
-        client = chromadb.PersistentClient(path=str(_chroma_path()))
+        client = chroma_client(_chroma_path())
         _knowledge_collection = client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
         return _knowledge_collection
 

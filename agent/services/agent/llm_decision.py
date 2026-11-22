@@ -58,13 +58,22 @@ def get_tools_for_goal(
         )
 
         skip_intent = not cfg.get("tool_routing_enabled", True)
+        # Route on what the OPERATOR asked, never on the decision goal. decision_loop appends
+        # "[Retrieval context]" (memories, reflections) to the goal; that pushed a 88-char "Create a file …"
+        # past classify_task's 400-char "reasoning" threshold, whose deterministic route is read-only — so
+        # a write request was never offered write_file, and the more Layla remembered the worse it got.
+        route_goal = goal
+        if isinstance(state, dict):
+            _orig = (state.get("original_goal") or "").strip()
+            if _orig and (goal or "").startswith(_orig):
+                route_goal = _orig
         rd = None
         if state is not None and isinstance(state, dict):
             existing = state.get("route_decision")
-            if isinstance(existing, dict) and (state.get("original_goal") or state.get("goal")) == goal:
+            if isinstance(existing, dict) and (state.get("original_goal") or state.get("goal")) == route_goal:
                 rd = existing
         if rd is None:
-            rd = route_intent(goal, context=context, workspace_root=workspace_root)
+            rd = route_intent(route_goal, context=context, workspace_root=workspace_root)
             if state is not None and isinstance(state, dict):
                 state["route_decision"] = rd.to_dict()
         else:
@@ -82,7 +91,7 @@ def get_tools_for_goal(
         try:
             from services.tools.toolchain_graph import deterministic_toolchain_route
 
-            route = deterministic_toolchain_route(goal or "")
+            route = deterministic_toolchain_route(route_goal or "")
             allowed = set(route.get("allowed_tools") or [])
             if allowed:
                 names = (names & allowed) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
@@ -98,7 +107,7 @@ def get_tools_for_goal(
             try:
                 from layla.tools.registry import tool_recommend
 
-                rec = tool_recommend(goal)
+                rec = tool_recommend(route_goal)
                 top_n = max(1, cap - 5)
                 top = [
                     r.get("tool")
@@ -314,9 +323,13 @@ def llm_decision(
                     )
                 )
                 if not explicit_action:
+                    # Caution is about CHANGES, never about looking. The old text ("prefer reason; tool only
+                    # if explicitly requested") made a fresh install — every operator is unknown on day one —
+                    # answer "I have enough context" instead of reading the file it was told to read.
                     observation_hint = (
-                        "Observation mode (early phase): prefer action=\"reason\" (explain, ask clarifiers, learn). "
-                        "Choose action=\"tool\" only if explicitly requested or necessary to answer.\n"
+                        "New operator: be careful with CHANGES - only write, run, delete or install when the "
+                        "operator asked for it. Reading and inspecting (read_file, list_dir, search) is always "
+                        "fine when it helps answer.\n"
                     )
     except Exception as _exc:
         logger.debug("llm_decision: observation_hint failed: %s", _exc, exc_info=False)
