@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from runtime_safety import install_state_path
+
 logger = logging.getLogger("layla")
 
 # In-memory workspace dependency graph: {node_id: {type, label, file, ...}}, edges: [(src, tgt, edge_type)]
@@ -18,7 +20,7 @@ _workspace_graph_edges: list[tuple[str, str, str]] = []
 _workspace_graph_root: Path | None = None
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-WORKSPACE_INDEX_PATH = Path(__file__).resolve().parent.parent / "chroma_db"
+WORKSPACE_INDEX_PATH = install_state_path(Path(__file__).resolve().parent.parent / "chroma_db")
 _COLLECTION_NAME = "workspace"
 _collection = None
 

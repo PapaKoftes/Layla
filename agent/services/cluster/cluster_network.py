@@ -17,11 +17,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from runtime_safety import install_state_path
+
 logger = logging.getLogger("layla")
 
 # ── Constants ────────────────────────────────────────────────────────────
 
-CLUSTER_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "cluster_config.json"
+CLUSTER_CONFIG_FILE = install_state_path(Path(__file__).resolve().parent.parent.parent / "cluster_config.json")
 HEARTBEAT_TIMEOUT_FACTOR = 3  # Mark peer offline after 3x heartbeat interval
 HEARTBEAT_INTERVAL_DEFAULT = 30  # seconds (matches cluster_heartbeat_interval default)
 # A peer with no heartbeat within this window reads as OFFLINE regardless of its stored

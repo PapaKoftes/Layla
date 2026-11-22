@@ -35,12 +35,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from runtime_safety import install_state_path
+
 logger = logging.getLogger("layla.pairing")
 
 router = APIRouter(prefix="/pairing", tags=["pairing"])
 
 _AGENT_DIR = Path(__file__).resolve().parent.parent
-_PAIRED_DEVICES_FILE = _AGENT_DIR / ".governance" / "paired_devices.json"
+_PAIRED_DEVICES_FILE = install_state_path(_AGENT_DIR / ".governance" / "paired_devices.json")
 
 # In-memory pending pairing sessions: {pin: {instance_id, created_at, shared_secret, peer_name}}
 _pending_pairings: dict[str, dict[str, Any]] = {}

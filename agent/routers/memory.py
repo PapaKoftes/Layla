@@ -19,8 +19,11 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = AGENT_DIR.parent
-KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
+from runtime_safety import knowledge_dir as _knowledge_dir  # noqa: E402
+
+KNOWLEDGE_DIR = _knowledge_dir()  # per-user on installed builds (install dir is read-only)
+
+
 def _resolve_db_path():
     """Use the canonical DB path from db_connection (respects LAYLA_DATA_DIR)."""
     try:
@@ -157,10 +160,10 @@ async def export_bundle():
             for f in sorted(KNOWLEDGE_DIR.rglob("*.md")):
                 if ".identity" in str(f):
                     continue
-                rel = f.relative_to(REPO_ROOT)
+                rel = "knowledge/" + str(f.relative_to(KNOWLEDGE_DIR))
                 zf.writestr(str(rel).replace("\\", "/"), f.read_text(encoding="utf-8", errors="replace"))
             for f in sorted(KNOWLEDGE_DIR.rglob("*.txt")):
-                rel = f.relative_to(REPO_ROOT)
+                rel = "knowledge/" + str(f.relative_to(KNOWLEDGE_DIR))
                 zf.writestr(str(rel).replace("\\", "/"), f.read_text(encoding="utf-8", errors="replace"))
 
         # Export learnings
@@ -216,10 +219,10 @@ async def import_bundle(file: UploadFile = File(...)):
             names = zf.namelist()
 
             # Import knowledge docs (Zip slip: ensure path stays under knowledge/)
-            knowledge_base = (REPO_ROOT / "knowledge").resolve()
+            knowledge_base = KNOWLEDGE_DIR.resolve()
             for name in names:
                 if name.startswith("knowledge/") and (name.endswith(".md") or name.endswith(".txt")):
-                    target = (REPO_ROOT / name).resolve()
+                    target = (KNOWLEDGE_DIR / name[len("knowledge/"):]).resolve()
                     try:
                         target.relative_to(knowledge_base)
                     except ValueError:

@@ -132,7 +132,9 @@ async def research_mission(request: Request):
             )
             ensure_research_brain_dirs()
             stages_to_run = stages_for_depth(mission_depth, next_stage)
-            if not (AGENT_DIR / ".research_brain" / "mission_state.json").exists():
+            from services.reasoning.research_lab import RESEARCH_BRAIN
+
+            if not (RESEARCH_BRAIN / "mission_state.json").exists():
                 save_mission_state({"stage": None, "progress": {}, "completed": []})
 
         max_mission_runtime_seconds = 14400
@@ -152,7 +154,9 @@ async def research_mission(request: Request):
                 if time.time() - start_time > max_mission_runtime_seconds:
                     mission_status = "stopped"
                     try:
-                        inc_path = AGENT_DIR / ".research_brain" / "strategic" / "incomplete.md"
+                        from services.reasoning.research_lab import RESEARCH_BRAIN
+
+                        inc_path = RESEARCH_BRAIN / "strategic" / "incomplete.md"
                         inc_path.parent.mkdir(parents=True, exist_ok=True)
                         _state = load_mission_state()
                         _done = _state.get("completed") or []

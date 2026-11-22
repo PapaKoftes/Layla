@@ -87,10 +87,16 @@ def get_vault_path() -> Path | None:
 
 
 def get_knowledge_vault_dir(repo_root: Path | None = None) -> Path:
-    """Return the knowledge/obsidian subdir, creating it if needed."""
+    """Return the knowledge/obsidian subdir, creating it if needed.
+
+    Default: under runtime_safety.knowledge_dir() (per-user on installed builds). An explicit repo_root
+    keeps the old ``<repo_root>/knowledge/...`` layout (tests)."""
     if repo_root is None:
-        repo_root = Path(__file__).resolve().parent.parent.parent
-    d = repo_root / "knowledge" / VAULT_SUBDIR
+        from runtime_safety import knowledge_dir
+
+        d = knowledge_dir() / VAULT_SUBDIR
+    else:
+        d = repo_root / "knowledge" / VAULT_SUBDIR
     d.mkdir(parents=True, exist_ok=True)
     return d
 

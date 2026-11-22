@@ -13,8 +13,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-_PACKS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "knowledge" / "packs"
-
 # Fallback presets if presets.json is missing (kept in sync with build_knowledge_registry.py).
 _DEFAULT_PRESETS = {
     "companion": ["core"],
@@ -28,7 +26,9 @@ _DEFAULT_PRESETS = {
 
 def _load_presets() -> dict[str, list[str]]:
     try:
-        p = _PACKS_DIR / "presets.json"
+        from runtime_safety import knowledge_dir  # lazy: runtime_safety imports this module lazily too
+
+        p = knowledge_dir() / "packs" / "presets.json"
         if p.is_file():
             data = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(data, dict):

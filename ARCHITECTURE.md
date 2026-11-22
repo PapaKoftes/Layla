@@ -152,12 +152,27 @@ Client
 | Episodes | SQLite `layla.db` (episodes, episode_events) — episodic memory grouping |
 | Tool outcomes | SQLite `layla.db` (tool_outcomes) — tool reliability learning |
 | Goals | SQLite `layla.db` (goals, goal_progress) — long-term goal tracking |
-| Pending approvals | `shared_state.pending` list + audit in DB |
+| Pending approvals | `<GOV_PATH>/pending.json` + audit in DB. `runtime_safety.GOV_PATH` is the single owner: `agent/.governance` in dev, `<LAYLA_DATA_DIR>/install_state/agent/.governance` on an installed build |
 | Knowledge index | ChromaDB `agent/chroma/` (collection: `knowledge`) |
-| Research lab / output | `agent/.research_lab/`, `agent/.research_output/`, `agent/.research_brain/` |
+| Research lab / output | `agent/.research_lab/`, `agent/.research_output/`, `agent/.research_brain/` in dev; mapped by `install_state_path()` on an installed build (see below) |
 | Config | `agent/runtime_config.json` in dev; under **`LAYLA_DATA_DIR`** when packaged (see `runtime_safety.py`) |
 | Project memory (per workspace) | `{workspace_root}/.layla/project_memory.json` — structural file map, optional plan/todos/decisions; tools `scan_repo`, `update_project_memory`; operator repos often add `.layla/` to `.gitignore` |
 | Engine plans (planning-first) | SQLite **`layla_plans`** in `layla.db` — goal, steps JSON, status; Web UI **Workspace → Plans**; see `routers/plans.py` |
+
+**Installed builds (read-only install dir).** The Windows installer puts the app in `C:\Program Files\Layla`, which a
+normal user can't write. Two resolvers in `runtime_safety.py` own every path that used to be written inside the
+install tree. An installed copy is recognised by the `.layla_installed` marker that only the installer payload carries
+(`runtime_safety.is_installed_build()`), not by probing writability, so a source checkout is never affected:
+- `knowledge_dir()`: the knowledge root (imports, fetched pages, ingestion, the Obsidian vault, memory-backup
+  import, and the indexer that reads them all). On an installed build it's `<LAYLA_DATA_DIR>/knowledge`, seeded from
+  the shipped tree; an upgrade re-copies changed shipped files, and files the user added are never touched.
+- `install_state_path(p)`: other mutable state (`.governance` approvals and audit, `.research_*` including the
+  research sandbox root, `cluster_config.json`, browser screenshots and profiles, the workspace index,
+  installed skill packs, `conversation_history.json`, the KB-builder default output). On an installed build it maps
+  to `<LAYLA_DATA_DIR>/install_state/<same relative path>`.
+
+`tests/test_install_state_paths.py` AST-guards that no new code builds those paths without the resolver.
+`installer/clean_install_test.ps1` proves on a clean VM that an approval gets queued and a knowledge import works.
 
 ---
 

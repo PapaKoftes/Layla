@@ -459,9 +459,11 @@ def setup_autonomous_run(
     )
     state["cognition_workspace_roots"] = [str(x).strip() for x in (cognition_workspace_roots or []) if str(x).strip()]
 
+    from runtime_safety import install_state_path
     from services.infrastructure.resource_manager import PRIORITY_AGENT as _PA
 
-    RESEARCH_LAB_ROOT = Path(__file__).resolve().parent.parent.parent / ".research_lab"
+    # Same mapping as research_lab.RESEARCH_LAB_ROOT: the sandbox root and its enforcement must agree.
+    RESEARCH_LAB_ROOT = install_state_path(Path(__file__).resolve().parent.parent.parent / ".research_lab")
     if research_mode:
         state["research_lab_root"] = str(RESEARCH_LAB_ROOT)
         max_tool_calls = cfg.get("research_max_tool_calls", 20)

@@ -8,7 +8,6 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from routers.paths import REPO_ROOT
 from services.infrastructure.route_helpers import sync_ingest_docs
 
 logger = logging.getLogger("layla")
@@ -16,7 +15,9 @@ router = APIRouter(tags=["knowledge"])
 
 
 def _packs_dir() -> Path:
-    return REPO_ROOT / "knowledge" / "packs"
+    from runtime_safety import knowledge_dir
+
+    return knowledge_dir() / "packs"
 
 
 def _read_json(path: Path, default):
@@ -107,8 +108,9 @@ async def knowledge_packs_set(request: Request):
     chunks = 0
     try:
         from layla.memory.vector_store import _get_knowledge_collection, index_knowledge_docs
+        from runtime_safety import knowledge_dir
 
-        index_knowledge_docs(REPO_ROOT / "knowledge")
+        index_knowledge_docs(knowledge_dir())
         chunks = int(_get_knowledge_collection().count())
         reindexed = True
     except Exception as e:
@@ -251,14 +253,16 @@ async def knowledge_import_chat(request: Request):
         else:
             return JSONResponse({"ok": False, "error": "unsupported_format"}, status_code=400)
         safe = "".join(c for c in title if c.isalnum() or c in ("-", "_")).strip()[:64] or "import"
-        dest_dir = REPO_ROOT / "knowledge" / "imports"
+        from runtime_safety import knowledge_dir
+
+        dest_dir = knowledge_dir() / "imports"
         dest_dir.mkdir(parents=True, exist_ok=True)
         path = dest_dir / f"{safe}.md"
         path.write_text(md, encoding="utf-8")
         return JSONResponse(
             {
                 "ok": True,
-                "path": str(path.relative_to(REPO_ROOT)),
+                "path": "knowledge/" + path.relative_to(dest_dir.parent).as_posix(),
                 "markdown_chars": len(md),
             }
         )

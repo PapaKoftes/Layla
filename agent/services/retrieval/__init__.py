@@ -230,7 +230,9 @@ def retrieve_documents(query: str, k: int = TOP_K) -> list[dict]:
                 refresh_knowledge_if_changed,
             )
             try:
-                refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
+                from runtime_safety import knowledge_dir
+
+                refresh_knowledge_if_changed(knowledge_dir())
             except Exception as e:
                 logger.debug("retrieve_documents refresh_knowledge failed: %s", e)
             chunks = get_knowledge_chunks_with_sources(query, k=k)

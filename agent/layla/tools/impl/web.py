@@ -422,7 +422,9 @@ def crawl_site(
             if store_knowledge:
                 try:
                     slug = urlparse(current_url).path.strip("/").replace("/", "_")[:50] or "index"
-                    fetched_dir = Path(__file__).resolve().parent.parent.parent.parent / "knowledge" / "fetched"
+                    from runtime_safety import knowledge_dir
+
+                    fetched_dir = knowledge_dir() / "fetched"
                     fetched_dir.mkdir(parents=True, exist_ok=True)
                     out = fetched_dir / f"{base_domain}_{slug}.txt"
                     out.write_text(f"source: {current_url}\ntitle: {title}\n\n{text[:30000]}", encoding="utf-8")

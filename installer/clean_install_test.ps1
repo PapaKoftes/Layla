@@ -78,6 +78,29 @@ for ($i = 0; $i -lt 180; $i++) {
 if (-not $healthy) { Fail "engine never became healthy on a clean install" }
 Write-Host "   OK /health 200"
 
+# --- 2b. Install-dir is read-only: features that persist state must still work ---------------------------
+# Model-free and deterministic. These failed on every real install while the source-checkout CI was green,
+# because they wrote under C:\Program Files\Layla, which a normal user cannot write.
+Write-Host "==> approval gate queues a pending approval (safe_mode default)"
+try {
+  $ar = Invoke-WebRequest "$base/memory/file_checkpoints/restore" -Method Post -Body '{"checkpoint_id":"clean-install-probe"}' -ContentType "application/json" -UseBasicParsing -TimeoutSec 30
+  $aj = $ar.Content | ConvertFrom-Json
+} catch { Fail "approval request crashed: $($_.Exception.Message)" }
+if (-not $aj.approval_required -or -not $aj.approval_id) { Fail "approval was not queued: $($ar.Content)" }
+$pend = Get-Json "/pending"
+if (-not (@($pend.pending) | Where-Object { $_.id -eq $aj.approval_id })) { Fail "queued approval $($aj.approval_id) missing from /pending" }
+Write-Host "   OK approval queued and listed"
+
+Write-Host "==> knowledge import writes to a per-user location"
+$chat = @{ format = "whatsapp"; title = "cleaninstall"; text = "1/2/24, 10:00 - Ana: hi`n1/2/24, 10:01 - Ben: hello" } | ConvertTo-Json
+try {
+  $kr = (Invoke-WebRequest "$base/knowledge/import_chat" -Method Post -Body $chat -ContentType "application/json" -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
+} catch { Fail "knowledge import crashed: $($_.Exception.Message)" }
+if (-not $kr.ok) { Fail "knowledge import failed: $($kr | ConvertTo-Json -Compress)" }
+$kfile = Get-ChildItem -Path $dataDir -Recurse -Filter "cleaninstall.md" -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $kfile) { Fail "imported knowledge file not found under $dataDir" }
+Write-Host "   OK imported to $($kfile.FullName)"
+
 # --- 3. Fresh: no model yet -----------------------------------------------------------------------------
 $st = Get-Json "/setup_status"
 if ($st.model_found) { Fail "PROBE BROKEN: a fresh install already reports a model ($($st | ConvertTo-Json -Compress))" }

@@ -26,9 +26,9 @@ $py = Join-Path $PayloadDir "python\python.exe"
 $agent = Join-Path $PayloadDir "agent"
 $exe = Join-Path $PayloadDir "layla.exe"
 # Required payload roots: the engine, the bundled Python, AND the runtime content trees the app reads from
-# the install root. knowledge/ + personality.json were silently omitted once — assert they ship so that
+# the install root. knowledge/ + personality.json were silently omitted once - assert they ship so that
 # regression fails the build instead of shipping a Layla with no knowledge base or personality.
-foreach ($p in @($py, $exe, (Join-Path $agent "main.py"), (Join-Path $PayloadDir "knowledge"), (Join-Path $PayloadDir "personality.json"))) {
+foreach ($p in @($py, $exe, (Join-Path $agent "main.py"), (Join-Path $PayloadDir "knowledge"), (Join-Path $PayloadDir "personality.json"), (Join-Path $PayloadDir ".layla_installed"))) {
   if (-not (Test-Path $p)) { Write-Error ("packaged_smoke: missing {0} - payload is incomplete" -f $p); exit 2 }
 }
 $data = Join-Path $env:TEMP ("layla_smoke_" + [System.Guid]::NewGuid().ToString("N"))
@@ -46,7 +46,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "   FAIL: embedder did not load (degraded 
 else { Write-Host "   OK" }
 
 # Check 1: the REAL frozen layla.exe (the shipped launcher) starts the engine and /health is 200.
-# This exercises exactly what a user double-clicks — the frozen exe + embeddable Python together, which is
+# This exercises exactly what a user double-clicks - the frozen exe + embeddable Python together, which is
 # where the 1.7.5 boot crash lived. (layla.exe is windowed/console=False, so it writes no stdout; the
 # launcher tees the engine to launch.log, which we read on failure.)
 Write-Host ("==> smoke: layla.exe boots the engine (/health 200 on port {0})" -f $Port)
