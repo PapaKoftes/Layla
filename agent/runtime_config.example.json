@@ -334,11 +334,11 @@
   "_comment_potato_preset": "Web UI Settings → Apply potato preset, or POST /settings/preset {\"preset\":\"potato\"} — merges low caps + use_chroma false + smaller n_ctx; see docs/POTATO_MODE.md",
   "models": {
     "default": "",
-    "code": "magicoder",
+    "code": "",
     "fast": "",
     "fallback": ""
   },
-  "_comment_models": "Optional aliases: code=magicoder maps to a known GGUF basename under models_dir. coding_model / reasoning_model / chat_model still override when set.",
+  "_comment_models": "Optional per-task models. Empty = use model_filename. After downloading Magicoder, set code to \"magicoder\" (alias for its GGUF basename under models_dir). Shipping it pre-set routed every coding turn of every install to a file nobody had downloaded. coding_model / reasoning_model / chat_model still override when set.",
   "_comment_model_fallback_chain": "Optional: ordered list of GGUF basenames to try when the routed model file is missing. The system always tries model_filename last.",
   "model_fallback_chain": [],
 
