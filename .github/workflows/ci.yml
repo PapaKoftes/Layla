@@ -185,7 +185,14 @@ jobs:
 
       - name: Install Playwright Chromium
         working-directory: agent
-        run: python -m playwright install chromium --with-deps
+        run: |
+          # apt mirrors / DNS blip occasionally ("Temporary failure resolving security.ubuntu.com" ->
+          # exit 100) - a network hiccup, not a code failure. Retry before failing the job.
+          for i in 1 2 3; do
+            python -m playwright install chromium --with-deps && exit 0
+            echo "playwright install attempt $i failed; retrying in 30s"; sleep 30
+          done
+          exit 1
 
       - name: Write CI runtime config
         working-directory: agent

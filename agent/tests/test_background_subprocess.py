@@ -15,8 +15,16 @@ if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-def test_cancel_worker_calls_terminate_then_kill():
+def test_cancel_worker_calls_terminate_then_kill(monkeypatch):
     from services.infrastructure import background_subprocess as bs
+
+    # The tree-kill helpers act on REAL OS pids (psutil.Process(pid).kill() on every platform, os.killpg on
+    # POSIX). With the fake pid unpatched, this test killed whatever real process tree held pid 4242 — on a
+    # CI runner that was intermittently pytest or its parent shell (the Windows job died mid-suite with no
+    # summary), and on a dev box it could be any of the operator's programs. Record instead of kill.
+    tree_kills: list = []
+    monkeypatch.setattr(bs, "_kill_process_tree_psutil", lambda pid: tree_kills.append(("psutil", pid)))
+    monkeypatch.setattr(bs, "_kill_process_tree_posix", lambda pid, sig: tree_kills.append(("posix", pid)))
 
     proc = MagicMock()
     proc.poll.return_value = None
@@ -24,6 +32,8 @@ def test_cancel_worker_calls_terminate_then_kill():
     bs.cancel_worker(proc, grace_seconds=0.05)
     proc.terminate.assert_called_once()
     proc.kill.assert_called_once()
+    assert ("psutil", 4242) in tree_kills, "the tree kill must target the worker's own pid"
+    assert all(pid == 4242 for _, pid in tree_kills), tree_kills
 
 
 def test_cancel_worker_noop_when_already_dead():
