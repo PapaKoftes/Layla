@@ -178,7 +178,26 @@ def fetch_url(url: str, store: bool = False) -> dict:
     stored_path = None
     if store:
         path = _storage_path(url)
-        path.write_text(f"source: {url}\nfetched: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n\n{text}", encoding="utf-8")
+        # SECURITY: neutralize the UNTRUSTED page BEFORE it lands in knowledge/fetched/. That dir is part
+        # of the retrieval corpus (vector_store enrichment reads the parent file RAW and injects +/-600
+        # chars of surrounding context into results), so a stored raw page would re-inject an embedded
+        # "ignore previous instructions" payload at retrieval time - bypassing the guard that
+        # fetch_url_tool applies only to the RETURNED text. The returned `text` stays raw here (the
+        # tool-layer _guard_web_result frames it once); this only hardens the persisted copy. Gated by
+        # the same doc_injection_guard_enabled flag, default on.
+        disk_text = text
+        try:
+            from services.workspace.doc_ingestion import neutralize_untrusted
+            _enabled = True
+            try:
+                import runtime_safety
+                _enabled = bool((runtime_safety.load_config() or {}).get("doc_injection_guard_enabled", True))
+            except Exception:
+                pass
+            disk_text = neutralize_untrusted(text, _enabled)
+        except Exception:
+            disk_text = text
+        path.write_text(f"source: {url}\nfetched: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n\n{disk_text}", encoding="utf-8")
         stored_path = str(path)
 
     return {
