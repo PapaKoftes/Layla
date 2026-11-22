@@ -36,6 +36,11 @@ UI_DIR = AGENT_DIR / "ui"
 
 
 def _join_bg_threads(timeout: float = 5.0) -> None:
+    # The registry owner first: it covers EVERY derived writer (outcome-memory, skill-acquire, cap-practice…),
+    # not just the three names below — a hand-kept name list is how the reflection leak went unnoticed.
+    from services.agent.turn_commit import join_derived_writes
+
+    join_derived_writes(timeout_total=timeout)
     deadline = time.time() + timeout
     while time.time() < deadline:
         alive = [t for t in threading.enumerate() if t.name in ("auto-learn", "conv-entity", "title-synth")]
