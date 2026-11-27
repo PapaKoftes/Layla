@@ -157,6 +157,22 @@ def _block_llama_cpp_on_ci():
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _no_operator_graph_migration(tmp_path_factory):
+    """Tests never import the operator's knowledge graph. On a checkout that has been run live, the
+    one-time legacy migration copied agent/layla/memory/knowledge_graph.graphml into every test's data dir,
+    so head-budget tests saw a graph section CI never has (and failed only on a used checkout). Point the
+    legacy source at a path that does not exist; GRAPH_PATH and its snapshot move together so the module
+    is not treated as overridden (same idiom as test_memory_graph_data_dir)."""
+    from unittest.mock import patch
+
+    from layla.memory import memory_graph as mg
+
+    nowhere = tmp_path_factory.mktemp("no_legacy_graph") / "knowledge_graph.graphml"
+    with patch.object(mg, "GRAPH_PATH", nowhere), patch.object(mg, "_DEFAULT_GRAPH_PATH", nowhere):
+        yield
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _no_native_gpu_probe():
     """Unit tests never probe real GPU offload: the first llama.cpp backend load could exceed the
     per-test timeout on CI Windows runners (see auto_tune._GPU_OFFLOAD), and results must not depend
@@ -397,9 +413,23 @@ def populated_profile(tmp_path):
             last_discussed="prompt assembly token budgets and the protected prefix",
         )
 
+        # 4) A small knowledge graph whose labels match an ordinary coding goal — a real profile has one,
+        # and its one-line association section is what used to take the last of the budget and starve
+        # the reference docs ("knowledge"). Per-test path (overridden mode), so it never leaks.
+        from unittest.mock import patch as _patch
+
+        from layla.memory import memory_graph as _mg
+
+        _graph_cm = _patch.object(_mg, "GRAPH_PATH", tmp_path / "populated_knowledge_graph.graphml")
+        _graph_cm.start()
+        for _label in ("python packaging conventions for this repo", "code review checklist for the agent loop",
+                       "python bug triage: reproduce first, then fix"):
+            _mg.add_node(_label)
+
         try:
             yield db_path
         finally:
+            _graph_cm.stop()
             if hasattr(db_mod, "_MIGRATED"):
                 db_mod._MIGRATED = False  # type: ignore[attr-defined]
             if hasattr(mig, "_MIGRATED"):

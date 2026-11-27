@@ -13,6 +13,9 @@ from services.agent.turn import record_step
 
 logger = logging.getLogger(__name__)
 
+# Consecutive "think" decisions before the loop answers from what it has (see the think branch).
+_MAX_CONSECUTIVE_THINKS = 2
+
 
 def run_decision_loop(
     state: dict,
@@ -254,10 +257,13 @@ def run_decision_loop(
             state["effort_estimate"] = decision.get("effort_estimate")
             state["risk_estimate"] = decision.get("risk_estimate")
 
+            if decision.get("action") != "think":
+                state["_consecutive_thinks"] = 0
             if decision.get("action") == "think":
                 thought = (decision.get("thought") or "").strip()
                 state["_think_seq"] = int(state.get("_think_seq") or 0) + 1
                 _tn = int(state["_think_seq"])
+                state["_consecutive_thinks"] = int(state.get("_consecutive_thinks") or 0) + 1
                 # Count this no-progress iteration toward the spin cap (audit #3).
                 state["no_op_steps"] = int(state.get("no_op_steps", 0) or 0) + 1
                 if thought:
@@ -281,7 +287,12 @@ def run_decision_loop(
                     + "\n\n[Tool results so far]:\n"
                     + _al._format_steps(state["steps"])
                 )
-                continue
+                if int(state["_consecutive_thinks"]) < _MAX_CONSECUTIVE_THINKS:
+                    continue
+                # Enough thinking without acting: answer from what was gathered. Live (jinx-20b), "What is
+                # my favorite color code?" thought 8 times in a row (one model call each, 26-107s) until the
+                # spin cap ended it as tool_limit, a failure status that also restricts the next turn.
+                decision = {**decision, "action": "reason"}
 
             if decision.get("action") == "reason" or state["objective_complete"]:
                 intent = "reason"
@@ -335,11 +346,14 @@ def run_decision_loop(
             # No "Does this direction align with your goals?" for a reframe: the reply answers the
             # operator's own message (reasoning_handler), and jinx-20b emitted revised_objective on plain
             # questions, tacking that question onto e.g. a one-token answer. Kept for a real strategy change.
-            state["objective"] = revised_objective.strip()
+            # Kept as a NOTE beside the operator's objective, never in place of it. jinx-20b often puts its
+            # ANSWER here ("The secret token in probe_token.txt is TOK-..."); overwriting state["objective"]
+            # made that the "Objective:" of every later decision and what verification/reflection judged
+            # progress against, and the operator's actual message vanished from the decision prompt.
+            state["objective_reframe"] = revised_objective.strip()[:500]
             state.setdefault("original_goal", revised_objective.strip())
             state["consecutive_no_progress"] = 0
             state["strategy_shift_count"] = 0
-            goal = state["objective"]
             # A reframe advances NONE of depth/tool_calls/blocked_calls and `continue`s, so a stuck model
             # that returns a fresh revised_objective every step would spin one decision-model call per
             # iteration until max_runtime (~15 min) — the SAME unbounded-spin hole the no_op_steps cap was

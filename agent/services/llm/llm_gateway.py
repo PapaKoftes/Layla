@@ -6,6 +6,7 @@ OpenAI-compatible server. Serializes all completion calls via a single lock
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import threading
@@ -16,7 +17,8 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from runtime_safety import REPO_ROOT  # noqa: E402 — one owner for the repo_root path
+
 _llm = None  # legacy: first loaded instance (health/UI)
 _llm_by_path: dict[str, Any] = {}  # resolved model path -> Llama (task-based routing)
 
@@ -130,6 +132,8 @@ def inference_lock(cfg: dict | None = None):
             cfg = {}
     return llm_generation_lock if (cfg or {}).get("llm_serialize_per_workspace") else llm_serialize_lock
 
+# Routed models already reported missing (warn once per process, then debug).
+_ROUTED_MISSING_WARNED: set[str] = set()
 _workspace_agent_locks: dict[str, threading.RLock] = {}
 _workspace_agent_locks_guard = threading.Lock()
 
@@ -208,6 +212,22 @@ _model_override_var: ContextVar[str | None] = ContextVar("model_override", defau
 _reasoning_effort_var: ContextVar[str | None] = ContextVar("reasoning_effort", default=None)
 # Current completion prompt snippet: enables routing when model_override is unset (single source of truth in _effective_model_filename)
 _routing_prompt_var: ContextVar[str | None] = ContextVar("routing_prompt", default=None)
+# The operator's message for the current turn. Task routing classifies THIS when set: classifying the full
+# prompt let the persona/system text decide ("Say hello" alone -> chat; with Morrigan's head -> coding), so
+# with a code model configured every turn, greetings included, was routed to it (live: a "code model not
+# found" warning on every turn).
+_routing_goal_var: ContextVar[str | None] = ContextVar("routing_goal", default=None)
+
+
+@contextlib.contextmanager
+def routing_goal(text: str | None):
+    """Route this turn's completions by the operator's words (cut before any appended tool/memory block)."""
+    t = (text or "").split("\n\n[", 1)[0].strip()[:2000] or None
+    tok = _routing_goal_var.set(t)
+    try:
+        yield
+    finally:
+        _routing_goal_var.reset(tok)
 # Active aspect id for this request: lets a per-aspect model override (aspect_model_overrides) win in _effective_model_filename.
 _active_aspect_var: ContextVar[str | None] = ContextVar("active_aspect", default=None)
 
@@ -334,8 +354,7 @@ def model_loaded_status() -> dict:
             return {"error": merge_recovery_message(rec), "recovery": rec}
         model_filename = (cfg.get("model_filename") or "").strip() or "your-model.gguf"
         if not model_filename or model_filename == "your-model.gguf":
-            md_raw = cfg.get("models_dir")
-            md = Path(md_raw).expanduser().resolve() if md_raw else REPO_ROOT / "models"
+            md = runtime_safety.models_dir(cfg)
             rec = missing_gguf_recovery(str(model_filename), md)
             return {"error": "Model not loaded. Set model_filename in runtime_config.json", "recovery": rec}
         model_path = runtime_safety.resolve_model_path(cfg)
@@ -411,6 +430,9 @@ def _effective_model_filename(cfg: dict) -> str:
         logger.debug("aspect model override resolve failed: %s", _asp_e)
 
     task: str | None = override if override in ("coding", "reasoning", "chat") else None
+    _goal_text = _routing_goal_var.get(None)
+    if _goal_text and not _prompt_is_router_internal(rp or ""):
+        rp = _goal_text
     if task is None and rp and not _prompt_is_router_internal(rp):
         if cfg.get("tool_routing_enabled", True):
             try:
@@ -513,14 +535,18 @@ def _get_llm():
                 picked = (fallback_fn, p)
                 break
         if picked is None:
-            logger.warning(
+            _log = logger.debug if wanted in _ROUTED_MISSING_WARNED else logger.warning
+            _ROUTED_MISSING_WARNED.add(wanted)
+            _log(
                 "llm_gateway: routed model missing (%s at %s) and no fallback candidates exist; keeping default path",
                 wanted,
                 model_path,
             )
         else:
             model_filename, model_path = picked
-            logger.warning(
+            _log = logger.debug if wanted in _ROUTED_MISSING_WARNED else logger.warning
+            _ROUTED_MISSING_WARNED.add(wanted)
+            _log(
                 "llm_gateway: routed model missing (%s); falling back to %s at %s",
                 wanted,
                 model_filename,

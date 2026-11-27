@@ -420,8 +420,12 @@ def build_system_prompt(
         "agent_state",
         "pinned_context",
         "memory",
-        "knowledge_graph",
+        # Reference docs before graph associations: knowledge has no appear-reserve (see below), so it only
+        # gets what is left, and a one-line graph association placed ahead of it took all of that on a
+        # small window — a real profile WITH a knowledge graph got no reference docs at all. Placement in
+        # the final prompt is unchanged: graph merges into the memory slot (dedupe below).
         "knowledge",
+        "knowledge_graph",
         "tools",
         "conversation",
         "current_task",

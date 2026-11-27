@@ -33,8 +33,6 @@ TOOLS: dict = {}
 def get_project_context_tool() -> dict:
     """Return current project context (read-only for agent)."""
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import get_project_context
         return {"ok": True, **get_project_context()}
     except Exception as e:
@@ -52,8 +50,6 @@ def update_project_context_tool(
 ) -> dict:
     """Update project context. lifecycle_stage: idea|planning|prototype|iteration|execution|reflection. progress/blockers/last_discussed for companion recall."""
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import set_project_context
         set_project_context(
             project_name=project_name or "",
@@ -72,8 +68,6 @@ def update_project_context_tool(
 def get_user_identity_tool() -> dict:
     """Return user/companion identity context (verbosity, humor, formality, response length, life narrative). Read-only."""
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import get_all_user_identity
         return {"ok": True, **get_all_user_identity()}
     except Exception as e:
@@ -88,8 +82,6 @@ def update_user_identity_tool(key: str, snapshot: str) -> dict:
     that they prefer spaces over tabs, their project directories, etc.). snapshot: the value.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import USER_IDENTITY_KEYS, set_user_identity
         if key not in USER_IDENTITY_KEYS:
             return {"ok": False, "error": f"key must be one of: {USER_IDENTITY_KEYS}"}
@@ -101,8 +93,6 @@ def update_user_identity_tool(key: str, snapshot: str) -> dict:
 def add_goal_tool(title: str, description: str = "", project_id: str = "") -> dict:
     """Add a long-term goal. project_id: optional project name to associate."""
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import add_goal
         gid = add_goal(title=title, description=description, project_id=project_id)
         return {"ok": True, "goal_id": gid, "message": "Goal added."}
@@ -112,8 +102,6 @@ def add_goal_tool(title: str, description: str = "", project_id: str = "") -> di
 def add_goal_progress_tool(goal_id: str, note: str = "", progress_pct: float = 0) -> dict:
     """Record progress on a goal. progress_pct: 0-100."""
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import add_goal_progress
         add_goal_progress(goal_id, note=note, progress_pct=progress_pct)
         return {"ok": True, "message": "Progress recorded."}
@@ -123,8 +111,6 @@ def add_goal_progress_tool(goal_id: str, note: str = "", progress_pct: float = 0
 def get_active_goals_tool(project_id: str = "") -> dict:
     """Return active goals, optionally filtered by project_id."""
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import get_active_goals
         goals = get_active_goals(project_id=project_id)
         return {"ok": True, "goals": goals}
@@ -745,8 +731,6 @@ def stt_file(path: str, language: str = "en", model_size: str = "base") -> dict:
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from services.infrastructure.stt import transcribe_file
         result = transcribe_file(str(target), language=language or None)
         if isinstance(result, dict):
@@ -776,8 +760,6 @@ def tts_speak(text: str, voice: str = "af_heart", output_path: str = "") -> dict
     import time as _time
     out = output_path or str(Path(_tmp.gettempdir()) / f"layla_tts_{int(_time.time())}.wav")
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from services.infrastructure.tts import speak_to_bytes
         wav_bytes = speak_to_bytes(text)
         if wav_bytes:

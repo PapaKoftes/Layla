@@ -36,8 +36,6 @@ def save_note(content: str, tag: str = "note") -> dict:
     Use this to remember facts, preferences, or observations mid-conversation.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from services.memory.memory_router import save_learning  # canonical write path
         save_learning(content=content[:800], kind=tag)
         return {"ok": True, "saved": content[:100]}
@@ -50,8 +48,6 @@ def search_memories(query: str, n: int = 8) -> dict:
     Returns the most relevant stored memories for the given query.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.vector_store import search_memories_full
         results = search_memories_full(query, k=n, use_rerank=False)
         items = [r.get("content", "") for r in results if r.get("content")]
@@ -81,8 +77,6 @@ def vector_search(query: str, collection: str = "knowledge", k: int = 8) -> dict
     This is the raw retrieval layer — use search_memories for the full RAG pipeline.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         if collection == "memories":
             from layla.memory.vector_store import search_memories_full
             results = search_memories_full(query, k=k, use_rerank=False)
@@ -106,8 +100,6 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
     metadata: optional dict of tags, source, aspect, etc.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from services.memory.memory_router import save_learning  # canonical write path
         meta = metadata or {}
         kind = meta.get("kind", "tool_store")
@@ -153,8 +145,6 @@ def spaced_repetition_review(limit: int = 10, learning_id: int | None = None, qu
     and had zero callers. This connects it.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import get_learnings_due_for_review
 
         if learning_id is not None and quality is not None:
@@ -182,8 +172,6 @@ def spaced_repetition_review(limit: int = 10, learning_id: int | None = None, qu
 def schedule_learning_review(learning_id: int, interval_hours: float = 24.0) -> dict:
     """Schedule next spaced repetition review for a learning."""
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import schedule_next_review
         schedule_next_review(learning_id, interval_hours)
         return {"ok": True, "learning_id": learning_id, "interval_hours": interval_hours}
@@ -195,12 +183,12 @@ def memory_stats() -> dict:
     Return stats about Layla's memory: learnings count, ChromaDB docs, aspect memories, DB size.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.db import get_recent_learnings
         learnings = get_recent_learnings(n=9999)
         result: dict = {"ok": True, "learnings_count": len(learnings)}
-        db_path = agent_dir / "layla.db"
+        from layla.memory.db_connection import _resolve_db_path
+
+        db_path = _resolve_db_path()
         if db_path.exists():
             result["db_size_kb"] = round(db_path.stat().st_size / 1024, 1)
         try:
@@ -248,7 +236,6 @@ def codex_suggest_update(workspace_root: str = "", goal_hint: str = "", recent_a
     Read-only suggestions for `.layla/relationship_codex.json` — does not write.
     Use goal_hint / recent_actions (e.g. tool step summary) for heuristics.
     """
-    from pathlib import Path
 
     from layla.tools import registry as _tools_registry
 

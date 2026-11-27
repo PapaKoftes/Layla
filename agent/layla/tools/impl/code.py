@@ -351,8 +351,6 @@ def project_discovery_tool(workspace_root: str = "") -> dict:
     README summary, and key structural patterns. Useful for orienting to an unfamiliar codebase.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from services.workspace.project_discovery import discover_project
         root = workspace_root or str(Path.cwd())
         return discover_project(root)

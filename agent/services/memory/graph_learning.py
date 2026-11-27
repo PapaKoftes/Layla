@@ -6,7 +6,7 @@ Uses load_graph/save_graph from memory_graph (no private API).
 import re
 from pathlib import Path
 
-AGENT_DIR = Path(__file__).resolve().parent.parent
+from runtime_safety import AGENT_DIR  # noqa: E402 — one owner for the agent_dir path
 
 
 def expand_graph_from_learning(content: str) -> None:

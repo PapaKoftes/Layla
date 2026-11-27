@@ -215,8 +215,6 @@ def discord_send(content: str = "", embed: dict | None = None, webhook_url: str 
     url = webhook_url or __import__("os").environ.get("DISCORD_WEBHOOK_URL", "")
     if not url:
         try:
-            agent_dir = Path(__file__).resolve().parent.parent.parent
-            sys.path.insert(0, str(agent_dir))
             import runtime_safety
             cfg = runtime_safety.load_config()
             url = cfg.get("discord_webhook_url", "") or ""

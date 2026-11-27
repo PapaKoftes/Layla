@@ -11,7 +11,7 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-AGENT_DIR = Path(__file__).resolve().parent.parent
+from runtime_safety import AGENT_DIR  # noqa: E402 — one owner for the agent_dir path
 
 
 def _get_db():

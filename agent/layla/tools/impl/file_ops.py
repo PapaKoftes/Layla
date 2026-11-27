@@ -707,8 +707,6 @@ def understand_file_tool(path: str, content: str | None = None) -> dict:
             ok, err = _ensure_inside_sandbox(target)
             if not ok:
                 return err or {"ok": False, "error": "Outside sandbox"}
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.file_understanding import analyze_file
         if content is not None:
             return {"ok": True, **analyze_file(file_path=path, content=content)}

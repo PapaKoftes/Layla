@@ -42,8 +42,13 @@ logger = logging.getLogger("layla.mdns")
 # ── Constants ────────────────────────────────────────────────────────────────
 SERVICE_TYPE = "_layla._tcp.local."
 SERVICE_NAME_PREFIX = "Layla-"
-_AGENT_DIR = Path(__file__).resolve().parent.parent
+# agent/ (this file is agent/services/cluster/mdns_discovery.py). It was parent.parent = agent/services, so
+# the instance id lived in a stray agent/services/.governance and _get_version() looked for a VERSION file
+# that exists nowhere: every LAN announcement said version 0.0.0.
+_AGENT_DIR = Path(__file__).resolve().parent.parent.parent
 _INSTANCE_ID_FILE = install_state_path(_AGENT_DIR / ".governance" / "instance_id")
+# Where the id was written before that fix; read once so an existing install keeps its LAN identity.
+_LEGACY_INSTANCE_ID_FILE = install_state_path(_AGENT_DIR / "services" / ".governance" / "instance_id")
 _DISCOVERY_TTL_S = 30  # how long a discovered peer stays valid without re-announcement
 
 # ── Module state ─────────────────────────────────────────────────────────────
@@ -61,13 +66,17 @@ _peers_lock = threading.Lock()
 
 def _get_or_create_instance_id() -> str:
     """Return a stable UUID for this Layla instance, persisted to disk."""
-    try:
-        if _INSTANCE_ID_FILE.exists():
-            stored = _INSTANCE_ID_FILE.read_text(encoding="utf-8").strip()
-            if stored and len(stored) >= 8:
-                return stored
-    except Exception:
-        pass
+    for f in (_INSTANCE_ID_FILE, _LEGACY_INSTANCE_ID_FILE):
+        try:
+            if f.exists():
+                stored = f.read_text(encoding="utf-8").strip()
+                if stored and len(stored) >= 8:
+                    if f is not _INSTANCE_ID_FILE:
+                        _INSTANCE_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
+                        _INSTANCE_ID_FILE.write_text(stored, encoding="utf-8")
+                    return stored
+        except Exception:
+            pass
     new_id = str(uuid.uuid4())
     try:
         _INSTANCE_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -137,12 +146,11 @@ def _get_available_models(cfg: dict) -> list[str]:
 def _get_version() -> str:
     """Return Layla version string."""
     try:
-        ver_file = _AGENT_DIR / "VERSION"
-        if ver_file.exists():
-            return ver_file.read_text(encoding="utf-8").strip()
+        from version import __version__
+
+        return str(__version__)
     except Exception:
-        pass
-    return "0.0.0"
+        return "0.0.0"
 
 
 def _get_lan_ip() -> str:

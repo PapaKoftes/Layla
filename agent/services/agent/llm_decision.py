@@ -219,6 +219,9 @@ def llm_decision(
 
     steps_text = format_steps_fn(state.get("steps") or [])
     objective = (state.get("objective") or goal).strip()
+    _reframe = str(state.get("objective_reframe") or "").strip()
+    if _reframe:  # the model's own note on approach — shown beside the operator's objective, never instead
+        objective = f"{objective}\n(Your current approach — your own note, not the operator's words: {_reframe[:300]})"
     steps_summary = str(state.get("steps_summary") or "").strip()
     if steps_summary:
         prompt_context = f"Objective: {objective[:500]}\n\n{steps_summary[:1200]}\n\n"

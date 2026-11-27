@@ -19,7 +19,8 @@ _workspace_graph: dict[str, dict[str, Any]] = {}
 _workspace_graph_edges: list[tuple[str, str, str]] = []
 _workspace_graph_root: Path | None = None
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from runtime_safety import REPO_ROOT  # noqa: E402 — one owner for the repo_root path
+
 WORKSPACE_INDEX_PATH = install_state_path(Path(__file__).resolve().parent.parent / "chroma_db")
 _COLLECTION_NAME = "workspace"
 _collection = None

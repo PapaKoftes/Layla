@@ -12,8 +12,7 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-AGENT_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = AGENT_DIR.parent
+from runtime_safety import AGENT_DIR, REPO_ROOT  # noqa: E402,F401 — skills/ lives at the repo root
 
 _FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL | re.MULTILINE)
 

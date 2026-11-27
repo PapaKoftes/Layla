@@ -1314,6 +1314,18 @@ def model_search_roots(cfg: dict | None = None) -> list[Path]:
     return roots
 
 
+def models_dir(cfg: dict | None = None) -> Path:
+    """THE models folder: config `models_dir` when set, else default_models_dir() (one owner).
+
+    Three modules re-derived this with a wrong REPO_ROOT (agent/, not the repo root) and so pointed
+    missing-model guidance and the doctor at agent/models.
+    """
+    if cfg is None:
+        cfg = load_config()
+    raw = (cfg or {}).get("models_dir")
+    return Path(raw).expanduser().resolve() if raw else default_models_dir()
+
+
 def resolve_model_path(cfg: dict | None = None) -> Path:
     """
     Resolve full path to model file. Uses models_dir from config if set, else default_models_dir.
@@ -1324,12 +1336,7 @@ def resolve_model_path(cfg: dict | None = None) -> Path:
     model_filename = (cfg.get("model_filename") or "").strip()
     if not model_filename or model_filename == "your-model.gguf":
         return default_models_dir() / "your-model.gguf"  # placeholder
-    models_dir_raw = cfg.get("models_dir")
-    if models_dir_raw:
-        models_dir = Path(models_dir_raw).expanduser().resolve()
-    else:
-        models_dir = default_models_dir()
-    primary = models_dir / model_filename
+    primary = models_dir(cfg) / model_filename
     if primary.exists():
         return primary.resolve()
     basename = Path(model_filename).name

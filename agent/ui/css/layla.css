@@ -1619,15 +1619,17 @@ body.overlay-scroll-lock {
   }
   #wizard-overlay.visible { display: flex; }
   /* ── First-run tour (BL-249) ──
-     Anchored bottom-centre with NO backdrop, unlike every other overlay here. That is deliberate: step 2
-     calls highlightAspectSidebar(true) to light up the real sidebar, and step 4 points at the top bar's
-     ⌘ button — a full-screen scrim would hide both. It sits BELOW the wizard (10001 < 10002) so the two
-     can never fight for the screen; setup.js also refuses to start it while the wizard is up. */
+     Anchored top-centre, just under the top bar, with NO backdrop, unlike every other overlay here. That is
+     deliberate: step 2 calls highlightAspectSidebar(true) to light up the real sidebar, and step 4 points at
+     the top bar's ⌘ button — a full-screen scrim would hide both. NOT bottom-anchored: there it sat exactly
+     on the message box, so a first-time user's typing and Enter went nowhere until they clicked through
+     every step. It sits BELOW the wizard (10001 < 10002) so the two can never fight for the screen;
+     setup.js also refuses to start it while the wizard is up. */
   #tour-overlay {
     display: none;
     position: fixed;
     left: 50%;
-    bottom: 22px;
+    top: 64px;
     transform: translateX(-50%);
     z-index: 10001;
     width: min(540px, calc(100vw - 28px));

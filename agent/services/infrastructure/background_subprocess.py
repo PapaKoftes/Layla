@@ -17,7 +17,8 @@ from typing import Any, Callable
 
 logger = logging.getLogger("layla")
 
-AGENT_DIR = Path(__file__).resolve().parent.parent
+from runtime_safety import AGENT_DIR  # noqa: E402 — one owner for the agent_dir path
+
 WORKER_SCRIPT = AGENT_DIR / "background_job_worker.py"
 
 
