@@ -110,6 +110,26 @@ llm_serialize_lock = _llm_lock
 # no .locked() — so RLock is a drop-in, and other threads still serialize against the holder.
 llm_generation_lock = threading.RLock()
 
+
+
+def inference_lock(cfg: dict | None = None):
+    """THE lock every native generation on the shared Llama instance must hold (one owner for the rule).
+
+    llama-cpp drops the GIL inside create_completion, so two threads generating on one instance at once
+    is a native race. run_completion always held this, but the GBNF agent decision and the post-turn
+    memory-fact extraction called create_completion directly: live, a background extraction from the
+    previous turn overlapped the next turn's forced write_file decision, the decision came back unusable,
+    and the turn fell through to a plain reply that wrote nothing (1 in 3 suite rounds).
+    """
+    if cfg is None:
+        try:
+            import runtime_safety
+
+            cfg = runtime_safety.load_config()
+        except Exception:
+            cfg = {}
+    return llm_generation_lock if (cfg or {}).get("llm_serialize_per_workspace") else llm_serialize_lock
+
 _workspace_agent_locks: dict[str, threading.RLock] = {}
 _workspace_agent_locks_guard = threading.Lock()
 
@@ -912,7 +932,7 @@ def run_completion(
     except Exception:
         pass
 
-    infer_lock = llm_generation_lock if cfg.get("llm_serialize_per_workspace") else llm_serialize_lock
+    infer_lock = inference_lock(cfg)
 
     try:
         if (

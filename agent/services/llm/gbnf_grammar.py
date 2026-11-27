@@ -180,15 +180,17 @@ def run_gbnf_agent_decision(
         return None
 
     try:
+        from services.llm.llm_gateway import inference_lock
         from services.llm.prompt_format import format_raw_prompt
 
-        out = llm.create_completion(
-            format_raw_prompt(llm, prompt),
-            max_tokens=max_tokens,
-            temperature=temperature,
-            grammar=grammar,
-            stream=False,
-        )
+        with inference_lock():
+            out = llm.create_completion(
+                format_raw_prompt(llm, prompt),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                grammar=grammar,
+                stream=False,
+            )
     except Exception as e:
         logger.debug("gbnf: constrained completion failed: %s", e)
         return None
@@ -260,12 +262,14 @@ def run_gbnf_memory_extraction(
         logger.debug("gbnf: memory grammar build/compile failed: %s", e)
         return None
     try:
+        from services.llm.llm_gateway import inference_lock
         from services.llm.prompt_format import format_raw_prompt
 
-        out = llm.create_completion(
-            format_raw_prompt(llm, prompt), max_tokens=max_tokens, temperature=temperature, grammar=grammar,
-            stream=False,
-        )
+        with inference_lock():
+            out = llm.create_completion(
+                format_raw_prompt(llm, prompt), max_tokens=max_tokens, temperature=temperature, grammar=grammar,
+                stream=False,
+            )
         text = (out.get("choices") or [{}])[0].get("text") or ""
     except Exception as e:
         logger.debug("gbnf: memory extraction failed: %s", e)

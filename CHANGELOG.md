@@ -42,6 +42,7 @@ Found by driving the real app with the real model (jinx-20b) rather than the tes
 - **Layla no longer contacts huggingface.co on every start.** Loading the embedding model by name made the HuggingFace library check online for a newer version each launch, even with the model already downloaded, and startup stalled when offline. Layla now loads the copy already on disk and only downloads it the first time.
 
 ### Fixed — other
+- **Two model calls no longer run at the same time.** The agent's tool decision and the after-turn memory extraction called the model directly, without the lock every other model call holds. A background extraction from one turn could then run on the model while the next turn was deciding, which can corrupt that decision (and, in native code, memory). Every model call now goes through one lock.
 - **Cached answers work.** Reusing a cached model answer crashed instead of returning it (an internal context token was reset twice), so every cache hit failed. Project discovery, which asks the same question each turn, failed on every turn after the first.
 - **The server log no longer fills with "Unknown event_type" warnings.** 17 of the 26 event types Layla records were missing from her own list, which logged about 15 false warnings per turn and buried real ones.
 - A scheduled job turned `lens_knowledge/sources/README.md` (folder docs) into a "README" lens that was injected into prompts as domain knowledge.
