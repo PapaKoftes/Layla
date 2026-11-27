@@ -934,7 +934,9 @@ def run_completion(
                     choices = hit.get("choices") or [{}]
                     msg = (choices[0] if choices else {}).get("message") or {}
                     text = msg.get("content") or (choices[0] if choices else {}).get("text") or ""
-                    _routing_prompt_var.reset(routing_tok)
+                    # No reset here: this path is non-stream, so the `finally` below resets the token. A
+                    # second reset raised RuntimeError("Token ... has already been used once"), so EVERY
+                    # completion-cache hit failed instead of returning (live: project_discovery each turn).
                     _add_usage(prompt_tokens, _count_tokens(text))
                     return hit
             except Exception as e:

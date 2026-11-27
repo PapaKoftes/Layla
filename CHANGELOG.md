@@ -42,6 +42,8 @@ Found by driving the real app with the real model (jinx-20b) rather than the tes
 - **Layla no longer contacts huggingface.co on every start.** Loading the embedding model by name made the HuggingFace library check online for a newer version each launch, even with the model already downloaded, and startup stalled when offline. Layla now loads the copy already on disk and only downloads it the first time.
 
 ### Fixed — other
+- **Cached answers work.** Reusing a cached model answer crashed instead of returning it (an internal context token was reset twice), so every cache hit failed. Project discovery, which asks the same question each turn, failed on every turn after the first.
+- **The server log no longer fills with "Unknown event_type" warnings.** 17 of the 26 event types Layla records were missing from her own list, which logged about 15 false warnings per turn and buried real ones.
 - A scheduled job turned `lens_knowledge/sources/README.md` (folder docs) into a "README" lens that was injected into prompts as domain knowledge.
 - LAN discovery advertised port 8000 even when Layla was running on another port (after moving off a busy 8000, or started with `--port`), so other devices were sent to a dead port.
 - Fresh installs no longer send coding requests to Magicoder, a model nobody had downloaded. The shipped example config pre-selected it, causing a fallback and a warning on every coding turn.
