@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import re
 import sqlite3
 import threading
 import time
@@ -862,3 +863,60 @@ def reindex_failed_learnings() -> int:
     return reindexed
 
 
+
+
+# ── Fact updates ────────────────────────────────────────────────────────────────────────────────────────
+# "<subject> is <value>" with a subject of 3+ words ("The operator's favorite color code is teal-ae0a").
+# A newer fact with the same subject and a different value is an UPDATE: the older ones are superseded.
+# Live: four contradictory "favorite color code" values accumulated (two learned, one merged by distillation,
+# one in the graph) and the model blended them ("teal-c2ad. Earlier, it was teal-7c2c; now it's teal-ae0a").
+# Deliberately narrow: 1-2 word subjects ("The user is a developer" / "The user is from Berlin") and
+# statements without "is/are" ("I like Python" / "I like Rust") are never treated as updates.
+_SUBJECT_IS_VALUE = re.compile(r"^(?P<subj>.+?)\s+(?:is|are)\s+(?P<val>[^.!?]{1,120})[.!?]?$", re.IGNORECASE)
+
+
+def fact_subject_value(text: str) -> tuple[str, str] | None:
+    """(subject, value) of a fact's first sentence when it has the update shape, else None."""
+    first = re.split(r"(?<=[.!?])\s+", (text or "").strip(), maxsplit=1)[0].strip()
+    first = re.sub(r"\s*\[merged from \d+ similar\]\s*$", "", first)
+    m = _SUBJECT_IS_VALUE.match(first)
+    if not m:
+        return None
+    subj = " ".join(m.group("subj").lower().split())
+    if len(subj.split()) < 3:
+        return None
+    return subj, " ".join(m.group("val").lower().split())
+
+
+def supersede_same_subject(content: str, keep_id: int, *, scan_limit: int = 2000) -> list[int]:
+    """Delete older learnings that state the same subject with a different value. Returns removed ids."""
+    sv = fact_subject_value(content)
+    if not sv:
+        return []
+    subj, val = sv
+    migrate()
+    with _conn() as db:
+        where = "id != ?"
+        if _has_source_col(db):
+            where += " AND " + _NOT_INTERNAL_SQL.format(p="")
+        rows = db.execute(f"SELECT id, content FROM learnings WHERE {where} ORDER BY id DESC LIMIT ?",
+                          (int(keep_id), int(scan_limit))).fetchall()
+    stale = []
+    for r in rows:
+        other = fact_subject_value(_dec(r[1] or ""))
+        if other and other[0] == subj and other[1] != val:
+            stale.append(int(r[0]))
+    if stale:
+        delete_learnings_by_id(stale)
+        try:
+            from layla.memory.memory_graph import remove_nodes
+
+            def _stale_label(label: str) -> bool:
+                o = fact_subject_value(label)
+                return bool(o and o[0] == subj and o[1] != val)
+
+            remove_nodes(_stale_label)
+        except Exception as e:
+            logger.debug("supersede: graph cleanup skipped: %s", e)
+        logger.info("fact update: superseded %d older value(s) of %r", len(stale), subj[:60])
+    return stale

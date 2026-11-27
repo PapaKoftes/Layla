@@ -22,13 +22,14 @@ def test_probe_the_two_facts_really_get_merged():
     assert len(groups) == 1 and len(groups[0]) == 2, "PROBE BROKEN: these facts are no longer grouped"
 
 
-def test_newest_value_leads_and_old_value_is_labelled_whatever_the_input_order():
+def test_newest_value_leads_and_the_old_value_is_dropped_whatever_the_input_order():
+    """Kept as "Earlier: ..." the old value was still picked by the model live, so it is dropped."""
     from layla.memory.distill import _summarize_group
 
     for group in ([OLD, NEW], [NEW, OLD]):
         s = _summarize_group(group)
         assert s.startswith("The operator's favorite color code is teal-ebab."), s
-        assert "Earlier: The operator's favorite color code is teal-d2c3." in s, s
+        assert "teal-d2c3" not in s, s
 
 
 def test_newest_value_survives_a_later_merge():
@@ -42,9 +43,10 @@ def test_newest_value_survives_a_later_merge():
     assert s.startswith("The operator's favorite color code is teal-ebab."), s
 
 
-def test_distinct_similar_facts_are_not_marked_as_superseded():
+def test_distinct_similar_facts_are_both_kept():
     from layla.memory.distill import _summarize_group
 
     a = {"id": 1, "content": "Fixed bug in login. User can now sign in.", "created_at": "2026-01-01"}
     b = {"id": 2, "content": "Fixed bug in login flow for admins today.", "created_at": "2026-01-02"}
-    assert "Earlier:" not in _summarize_group([a, b])
+    s = _summarize_group([a, b])
+    assert "Fixed bug in login." in s and "admins today" in s, s

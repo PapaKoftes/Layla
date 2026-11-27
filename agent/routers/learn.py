@@ -177,23 +177,28 @@ def correct_fact(req: FactCorrectionRequest):
         if not matched_id:
             return JSONResponse({"ok": False, "error": "No matching fact found", "query": query})
 
-        # 2. Update the learning content
-        with _conn() as db:
-            db.execute(
-                "UPDATE learnings SET content = ?, confidence = 1.0, updated_at = datetime('now') WHERE id = ?",
-                (correction, matched_id),
-            )
-
-        # 3. Re-embed in vector store
+        # 2. Replace through the canonical write path (encryption policy, dedup, fact supersession), then drop
+        #    the old row and its vector. The previous in-place UPDATE set an `updated_at` column the learnings
+        #    table does not have — every correction failed with a 500 — wrote plaintext over possibly
+        #    encrypted content, and left the old vector searchable.
+        embedding_id = ""
         try:
             from layla.memory.vector_store import add_vector, embed
-            vec = embed(correction)
             meta = {"content": correction, "type": "fact", "corrected": True}
             if req.aspect_id:
                 meta["aspect_id"] = req.aspect_id
-            add_vector(vec, meta)
+            embedding_id = add_vector(embed(correction), meta) or ""
         except Exception as ve:
-            logger.warning("re-embed after correction failed: %s", ve)
+            logger.warning("embed after correction failed: %s", ve)
+        from layla.memory.db import delete_learnings_by_id
+        from services.memory.memory_router import save_learning
+
+        new_id = save_learning(content=correction, kind="fact", embedding_id=embedding_id, confidence=1.0,
+                               aspect_id=req.aspect_id or "", bypass_rate_limit=True)
+        if not isinstance(new_id, int) or new_id <= 0:
+            return JSONResponse({"ok": False, "error": "correction was not stored"}, status_code=400)
+        if int(matched_id) != new_id:
+            delete_learnings_by_id([int(matched_id)])
 
         # 4. Record the correction event for maturity tracking
         try:
@@ -208,7 +213,7 @@ def correct_fact(req: FactCorrectionRequest):
             "message": "Fact corrected",
             "old_content": old_content,
             "new_content": correction,
-            "learning_id": str(matched_id),
+            "learning_id": str(new_id),
         })
     except Exception as e:
         logger.exception("fact correction failed")

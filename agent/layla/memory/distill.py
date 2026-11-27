@@ -171,7 +171,7 @@ def _summarize_group(group: list[dict]) -> str:
     "... teal-ebab" became "...teal-d2c3. ...teal-ebab." and, live, Layla answered with the OLD value. A
     later merge keeps only each row's first sentence and at most three parts, so the newest value could
     then be dropped entirely. Now the newest statement leads (and so survives every later merge), and an
-    older statement of the same fact with a different value is kept but labelled "Earlier:".
+    older statement of the same fact with a different value is dropped.
     """
     ordered = sorted(group, key=lambda L: (str(L.get("created_at") or ""), L.get("id") or 0), reverse=True)
     parts: list[str] = []
@@ -180,10 +180,12 @@ def _summarize_group(group: list[dict]) -> str:
         if not c:
             continue
         first = _first_sentence(c)
-        if not first or first in parts or any(p == "Earlier: " + first for p in parts):
+        if not first or first in parts:
             continue
-        if any(_same_statement_new_value(p, first) for p in parts if not p.startswith("Earlier: ")):
-            first = "Earlier: " + first
+        # An older statement of the same fact with a different value is DROPPED. It used to be kept as
+        # "Earlier: ...", but live the model still answered with the labelled old value.
+        if any(_same_statement_new_value(p, first) for p in parts):
+            continue
         parts.append(first)
     if not parts:
         return "Merged experience (no content)."
