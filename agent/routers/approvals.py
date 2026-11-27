@@ -114,7 +114,11 @@ def approve(req: dict, request: Request):
             else:
                 # Approval UI may attach preview-only keys (e.g. unified diff) — never pass those to tools.
                 _skip = frozenset({"goal", "diff"})
-                tool_result = TOOLS[tool_name]["fn"](**{k: v for k, v in args.items() if k not in _skip})
+                # An approved call is real operator-driven usage: attribute it like the agent loop's own calls.
+                from services.observability._legacy_observability import TOOL_SOURCE_AGENT, tool_invocation_source
+
+                with tool_invocation_source(TOOL_SOURCE_AGENT):
+                    tool_result = TOOLS[tool_name]["fn"](**{k: v for k, v in args.items() if k not in _skip})
                 result_ok = bool((tool_result or {}).get("ok", False))
         except Exception as e:
             tool_result = {"ok": False, "error": str(e)}

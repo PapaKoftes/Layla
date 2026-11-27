@@ -345,3 +345,15 @@ def get_neighbors(node_id: int, direction: str = "out") -> list:
             "metadata": json.loads(data.get("metadata", "{}")) if isinstance(data.get("metadata"), str) else (data.get("metadata") or {}),
         })
     return result
+
+
+def remove_nodes(predicate) -> int:
+    """Remove every node whose label satisfies ``predicate(label)``. Returns how many were removed."""
+    with _graph_lock:
+        G = _get_graph()
+        doomed = [n for n, d in G.nodes(data=True) if predicate(str((d or {}).get("label") or ""))]
+        if not doomed:
+            return 0
+        G.remove_nodes_from(doomed)
+        _save_graph(G)
+        return len(doomed)

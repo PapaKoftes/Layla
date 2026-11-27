@@ -6,6 +6,7 @@ OpenAI-compatible server. Serializes all completion calls via a single lock
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import threading
@@ -16,7 +17,8 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from runtime_safety import REPO_ROOT  # noqa: E402 — one owner for the repo_root path
+
 _llm = None  # legacy: first loaded instance (health/UI)
 _llm_by_path: dict[str, Any] = {}  # resolved model path -> Llama (task-based routing)
 
@@ -110,6 +112,28 @@ llm_serialize_lock = _llm_lock
 # no .locked() — so RLock is a drop-in, and other threads still serialize against the holder.
 llm_generation_lock = threading.RLock()
 
+
+
+def inference_lock(cfg: dict | None = None):
+    """THE lock every native generation on the shared Llama instance must hold (one owner for the rule).
+
+    llama-cpp drops the GIL inside create_completion, so two threads generating on one instance at once
+    is a native race. run_completion always held this, but the GBNF agent decision and the post-turn
+    memory-fact extraction called create_completion directly: live, a background extraction from the
+    previous turn overlapped the next turn's forced write_file decision, the decision came back unusable,
+    and the turn fell through to a plain reply that wrote nothing (1 in 3 suite rounds).
+    """
+    if cfg is None:
+        try:
+            import runtime_safety
+
+            cfg = runtime_safety.load_config()
+        except Exception:
+            cfg = {}
+    return llm_generation_lock if (cfg or {}).get("llm_serialize_per_workspace") else llm_serialize_lock
+
+# Routed models already reported missing (warn once per process, then debug).
+_ROUTED_MISSING_WARNED: set[str] = set()
 _workspace_agent_locks: dict[str, threading.RLock] = {}
 _workspace_agent_locks_guard = threading.Lock()
 
@@ -188,6 +212,22 @@ _model_override_var: ContextVar[str | None] = ContextVar("model_override", defau
 _reasoning_effort_var: ContextVar[str | None] = ContextVar("reasoning_effort", default=None)
 # Current completion prompt snippet: enables routing when model_override is unset (single source of truth in _effective_model_filename)
 _routing_prompt_var: ContextVar[str | None] = ContextVar("routing_prompt", default=None)
+# The operator's message for the current turn. Task routing classifies THIS when set: classifying the full
+# prompt let the persona/system text decide ("Say hello" alone -> chat; with Morrigan's head -> coding), so
+# with a code model configured every turn, greetings included, was routed to it (live: a "code model not
+# found" warning on every turn).
+_routing_goal_var: ContextVar[str | None] = ContextVar("routing_goal", default=None)
+
+
+@contextlib.contextmanager
+def routing_goal(text: str | None):
+    """Route this turn's completions by the operator's words (cut before any appended tool/memory block)."""
+    t = (text or "").split("\n\n[", 1)[0].strip()[:2000] or None
+    tok = _routing_goal_var.set(t)
+    try:
+        yield
+    finally:
+        _routing_goal_var.reset(tok)
 # Active aspect id for this request: lets a per-aspect model override (aspect_model_overrides) win in _effective_model_filename.
 _active_aspect_var: ContextVar[str | None] = ContextVar("active_aspect", default=None)
 
@@ -314,8 +354,7 @@ def model_loaded_status() -> dict:
             return {"error": merge_recovery_message(rec), "recovery": rec}
         model_filename = (cfg.get("model_filename") or "").strip() or "your-model.gguf"
         if not model_filename or model_filename == "your-model.gguf":
-            md_raw = cfg.get("models_dir")
-            md = Path(md_raw).expanduser().resolve() if md_raw else REPO_ROOT / "models"
+            md = runtime_safety.models_dir(cfg)
             rec = missing_gguf_recovery(str(model_filename), md)
             return {"error": "Model not loaded. Set model_filename in runtime_config.json", "recovery": rec}
         model_path = runtime_safety.resolve_model_path(cfg)
@@ -391,6 +430,9 @@ def _effective_model_filename(cfg: dict) -> str:
         logger.debug("aspect model override resolve failed: %s", _asp_e)
 
     task: str | None = override if override in ("coding", "reasoning", "chat") else None
+    _goal_text = _routing_goal_var.get(None)
+    if _goal_text and not _prompt_is_router_internal(rp or ""):
+        rp = _goal_text
     if task is None and rp and not _prompt_is_router_internal(rp):
         if cfg.get("tool_routing_enabled", True):
             try:
@@ -493,14 +535,18 @@ def _get_llm():
                 picked = (fallback_fn, p)
                 break
         if picked is None:
-            logger.warning(
+            _log = logger.debug if wanted in _ROUTED_MISSING_WARNED else logger.warning
+            _ROUTED_MISSING_WARNED.add(wanted)
+            _log(
                 "llm_gateway: routed model missing (%s at %s) and no fallback candidates exist; keeping default path",
                 wanted,
                 model_path,
             )
         else:
             model_filename, model_path = picked
-            logger.warning(
+            _log = logger.debug if wanted in _ROUTED_MISSING_WARNED else logger.warning
+            _ROUTED_MISSING_WARNED.add(wanted)
+            _log(
                 "llm_gateway: routed model missing (%s); falling back to %s at %s",
                 wanted,
                 model_filename,
@@ -565,6 +611,20 @@ def _get_llm():
         # CPU-only (n_gpu_layers == 0). GPU runs still default it on.
         _cpu_only = _safe_int(cfg.get("n_gpu_layers", -1), -1) == 0
         use_flash = bool(cfg.get("flash_attn", not _cpu_only))
+        # Full GPU offload: every layer lives in VRAM, so a memory-mapped model file only keeps a second,
+        # host-side copy resident. Measured (jinx-20b, RTX 5060 Ti, 31 GB RAM): use_mmap=True -> +16.3 GB
+        # host RAM (system 95%, 12 s load); False -> +2.2 GB (50%, 7 s). That copy pushed the box into the
+        # admission gate's "system_busy" and made the whole PC lag. Installers write "use_mmap": true as a
+        # blanket default, so this is decided here, at load; partial/CPU offload still honours use_mmap.
+        _full_offload = _safe_int(cfg.get("n_gpu_layers", -1), -1) < 0
+        if _full_offload:
+            try:
+                from services.infrastructure.auto_tune import _gpu_offload_available
+
+                _full_offload = _gpu_offload_available()
+            except Exception:
+                _full_offload = False
+        _keep_host_copy = bool(cfg.get("use_mmap_full_offload", False))
         kwargs = {
             "model_path": str(model_path),
             "n_ctx": n_ctx,
@@ -572,8 +632,8 @@ def _get_llm():
             "n_batch": n_batch,
             "n_threads": n_threads,
             "n_threads_batch": n_threads_batch,
-            "use_mlock": bool(cfg.get("use_mlock", False)),
-            "use_mmap": bool(cfg.get("use_mmap", True)),
+            "use_mlock": bool(cfg.get("use_mlock", False)) and (not _full_offload or _keep_host_copy),
+            "use_mmap": bool(cfg.get("use_mmap", True)) and (not _full_offload or _keep_host_copy),
             "verbose": False,
             # Flash attention: dramatically reduces VRAM + speeds up long contexts
             "flash_attn": use_flash,
@@ -777,6 +837,8 @@ def get_stop_sequences():
         # ChatML/harmony + SentencePiece (Mistral/Llama-2 "</s>") + Llama-3 turn tokens — stop generation
         # on them so a chat-template/quant mismatch can't emit the EOS as literal trailing residue.
         "<|endoftext|>", "<|im_end|>", "</s>", "<|eot_id|>", "<|eom_id|>", "<|end_of_text|>",
+        # gpt-oss / harmony end-of-message tokens (prompt_format wraps harmony models' prompts).
+        "<|return|>", "<|end|>",
     ]
     import runtime_safety
     cfg = runtime_safety.load_config()
@@ -910,7 +972,7 @@ def run_completion(
     except Exception:
         pass
 
-    infer_lock = llm_generation_lock if cfg.get("llm_serialize_per_workspace") else llm_serialize_lock
+    infer_lock = inference_lock(cfg)
 
     try:
         if (
@@ -932,7 +994,9 @@ def run_completion(
                     choices = hit.get("choices") or [{}]
                     msg = (choices[0] if choices else {}).get("message") or {}
                     text = msg.get("content") or (choices[0] if choices else {}).get("text") or ""
-                    _routing_prompt_var.reset(routing_tok)
+                    # No reset here: this path is non-stream, so the `finally` below resets the token. A
+                    # second reset raised RuntimeError("Token ... has already been used once"), so EVERY
+                    # completion-cache hit failed instead of returning (live: project_discovery each turn).
                     _add_usage(prompt_tokens, _count_tokens(text))
                     return hit
             except Exception as e:

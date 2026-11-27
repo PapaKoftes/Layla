@@ -12,8 +12,7 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-AGENT_DIR = Path(__file__).resolve().parent.parent
+from runtime_safety import AGENT_DIR, REPO_ROOT  # noqa: E402,F401 — one owner for these paths
 
 
 def python_support_status() -> dict[str, Any]:
@@ -256,12 +255,15 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
         errors.append(f"Missing: {', '.join(missing)}")
 
     # Model directory (from config, else repo models)
+    # Through the owners (AGENTS.md: never read runtime_config.json directly). This read
+    # agent/services/runtime_config.json — a path that never exists — so the doctor checked defaults.
+    import runtime_safety
+
     try:
-        cfg = json.loads((AGENT_DIR / "runtime_config.json").read_text(encoding="utf-8-sig"))
+        cfg = runtime_safety.load_config()
     except Exception:
         cfg = {}
-    models_dir_raw = cfg.get("models_dir")
-    models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else REPO_ROOT / "models"
+    models_dir = runtime_safety.models_dir(cfg)
     report["checks"]["model_dir"] = {
         "path": str(models_dir),
         "exists": models_dir.exists(),
@@ -271,14 +273,10 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
         errors.append("models/ directory missing")
 
     # Config
-    cfg_path = AGENT_DIR / "runtime_config.json"
+    cfg_path = Path(runtime_safety.CONFIG_FILE)
     report["checks"]["config"] = {"exists": cfg_path.exists(), "path": str(cfg_path)}
     if cfg_path.exists():
-        try:
-            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-            report["checks"]["config"]["model_filename"] = cfg.get("model_filename", "")
-        except Exception as e:
-            report["checks"]["config"]["error"] = str(e)
+        report["checks"]["config"]["model_filename"] = cfg.get("model_filename", "")
 
     # GPU detection
     try:
@@ -295,7 +293,9 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
         report["checks"]["hardware"] = {"error": str(e)}
 
     # Database
-    db_path = REPO_ROOT / "layla.db"
+    from layla.memory.db_connection import _resolve_db_path
+
+    db_path = _resolve_db_path()
     report["checks"]["database"] = {
         "path": str(db_path),
         "exists": db_path.exists(),

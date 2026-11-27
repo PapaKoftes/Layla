@@ -962,6 +962,9 @@ def _migrate_impl() -> None:
     # Migrate learnings.json
     _migrate_learnings_json()
 
+    # Merged reflections stored as plain facts before recall excluded them (one-time, idempotent).
+    _retag_legacy_internal_learnings()
+
     # ── Set baseline version ──
     # All existing migration code above has run; stamp version 1 so future
     # migrations can gate on `if version < N`.
@@ -984,6 +987,7 @@ from layla.memory.data_migrations import (  # noqa: E402
     _cleanup_orphaned_records,
     _migrate_evolution_layer,
     _migrate_learnings_json,
+    _retag_legacy_internal_learnings,
 )
 
 __all__ = ["migrate", "_MIGRATED", "_MIGRATION_LOCK"]

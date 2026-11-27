@@ -78,6 +78,19 @@ def _alternation(values: Iterable[str]) -> str:
     return " | ".join(lits)
 
 
+def build_forced_tool_grammar(tool: str) -> str:
+    """Grammar for exactly one call of ``tool`` with an args object (see services/agent/forced_tool.py)."""
+    root = (
+        'root ::= "{" ws "\\"action\\"" ws ":" ws "\\"tool\\"" ws "," ws "\\"tool\\"" ws ":" ws '
+        + _json_string_terminal(tool)
+        + ' ws "," ws "\\"args\\"" ws ":" ws object '
+        '( ws "," ws "\\"priority_level\\"" ws ":" ws priority )? '
+        '( ws "," ws "\\"objective_complete\\"" ws ":" ws boolean )? '
+        'ws "}"'
+    )
+    return "\n".join([root, f"priority ::= {_alternation(_PRIORITIES)}", _JSON_SCAFFOLD])
+
+
 def build_decision_grammar(valid_tools: Iterable[str] | None) -> str:
     """
     Build a GBNF grammar constraining output to one AgentDecision JSON object.
@@ -103,7 +116,9 @@ def build_decision_grammar(valid_tools: Iterable[str] | None) -> str:
         '"\\"action\\"" ws ":" ws action '
         '( ws "," ws "\\"tool\\"" ws ":" ws tool )? '
         '( ws "," ws "\\"args\\"" ws ":" ws object )? '
-        '( ws "," ws "\\"thought\\"" ws ":" ws string )? '
+        # Bounded: the decision budget is 80 tokens, and an unbounded thought ran past it mid-string on
+        # jinx-20b, so the truncated JSON failed to parse and the whole step was discarded.
+        '( ws "," ws "\\"thought\\"" ws ":" ws shortstr )? '
         '( ws "," ws "\\"priority_level\\"" ws ":" ws priority )? '
         '( ws "," ws "\\"objective_complete\\"" ws ":" ws boolean )? '
         '( ws "," ws "\\"revised_objective\\"" ws ":" ws string )? '
@@ -116,6 +131,7 @@ def build_decision_grammar(valid_tools: Iterable[str] | None) -> str:
             f"action ::= {_alternation(_ACTIONS)}",
             f"tool ::= {tool_rule}",
             f"priority ::= {_alternation(_PRIORITIES)}",
+            'shortstr ::= "\\"" ( [^"\\\\] | "\\\\" . ){0,160} "\\""',
             _JSON_SCAFFOLD,
         ]
     ) + "\n"
@@ -138,13 +154,15 @@ def run_gbnf_agent_decision(
     max_tokens: int,
     temperature: float,
     valid_tools: frozenset[str],
+    force_tool: str | None = None,
 ) -> dict | None:
     """
     Generate one agent decision under a GBNF grammar on a local llama.cpp model.
 
     Returns the normalised decision dict (via ``decision_schema.parse_decision``), or
     ``None`` if llama_cpp/grammar is unavailable or generation fails — so the caller
-    falls through to the existing outlines/instructor/plain chain.
+    falls through to the existing outlines/instructor/plain chain. ``force_tool`` (one of
+    ``valid_tools``) constrains the output to a single call of that tool.
     """
     try:
         from llama_cpp import LlamaGrammar
@@ -152,20 +170,27 @@ def run_gbnf_agent_decision(
         return None
 
     try:
-        grammar_text = build_decision_grammar(valid_tools)
+        if force_tool and force_tool in valid_tools:
+            grammar_text = build_forced_tool_grammar(force_tool)
+        else:
+            grammar_text = build_decision_grammar(valid_tools)
         grammar = LlamaGrammar.from_string(grammar_text, verbose=False)
     except Exception as e:
         logger.debug("gbnf: grammar build/compile failed: %s", e)
         return None
 
     try:
-        out = llm.create_completion(
-            prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            grammar=grammar,
-            stream=False,
-        )
+        from services.llm.llm_gateway import inference_lock
+        from services.llm.prompt_format import format_raw_prompt
+
+        with inference_lock():
+            out = llm.create_completion(
+                format_raw_prompt(llm, prompt),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                grammar=grammar,
+                stream=False,
+            )
     except Exception as e:
         logger.debug("gbnf: constrained completion failed: %s", e)
         return None
@@ -237,9 +262,14 @@ def run_gbnf_memory_extraction(
         logger.debug("gbnf: memory grammar build/compile failed: %s", e)
         return None
     try:
-        out = llm.create_completion(
-            prompt, max_tokens=max_tokens, temperature=temperature, grammar=grammar, stream=False
-        )
+        from services.llm.llm_gateway import inference_lock
+        from services.llm.prompt_format import format_raw_prompt
+
+        with inference_lock():
+            out = llm.create_completion(
+                format_raw_prompt(llm, prompt), max_tokens=max_tokens, temperature=temperature, grammar=grammar,
+                stream=False,
+            )
         text = (out.get("choices") or [{}])[0].get("text") or ""
     except Exception as e:
         logger.debug("gbnf: memory extraction failed: %s", e)

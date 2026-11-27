@@ -72,7 +72,7 @@ from urllib.request import urlopen
 
 logger = logging.getLogger("layla")
 
-_AGENT_DIR = Path(__file__).resolve().parent.parent
+_AGENT_DIR = Path(__file__).resolve().parent.parent.parent  # agent/ (file is agent/services/<pkg>/)
 
 
 # ── Config ────────────────────────────────────────────────────────────────────

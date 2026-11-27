@@ -12,9 +12,14 @@ logger = logging.getLogger("layla")
 TASK_TYPES = ("coding", "reasoning", "chat", "decision", "default")
 
 
+# Missing routed models already warned about (once per process; the file does not reappear per turn —
+# live, the same "Magicoder ... not found" warning was logged ~4 times per turn, burying real warnings).
+_WARNED_MISSING: set[str] = set()
+
+
 def _warn_router_model_missing(model_fn: str | None, label: str) -> None:
     m = (model_fn or "").strip()
-    if not m:
+    if not m or m in _WARNED_MISSING:
         return
     try:
         import runtime_safety
@@ -24,6 +29,7 @@ def _warn_router_model_missing(model_fn: str | None, label: str) -> None:
         probe["model_filename"] = m
         p = runtime_safety.resolve_model_path(probe)
         if not p.exists():
+            _WARNED_MISSING.add(m)
             d = (cfg0.get("model_filename") or "").strip() or "model_filename"
             logger.warning(
                 "model_router fallback: %s not found → using default at load (%s) [%s]",

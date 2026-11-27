@@ -170,11 +170,18 @@ def test_reflection_engine_produces_retrievable_learnings(monkeypatch, tmp_path)
     result = run_reflection(state)
     # run_reflection returns None only for non-finished or no-tool states
     assert result is not None, "run_reflection returned None for a finished state with tool steps"
-    rows = db_mod.get_recent_learnings(n=20)
-    contents = " ".join(r.get("content", "") for r in rows)
-    assert "Reflection" in contents or "Worked" in contents or "write_file" in contents, (
-        f"Reflection not found in learnings. Contents: {contents[:300]}"
+    # Stored for self_improvement's mining query (source='reflection_engine')…
+    with db_mod._conn() as db:
+        mined = " ".join(
+            str(r[0] or "") for r in db.execute("SELECT content FROM learnings WHERE source='reflection_engine'").fetchall()
+        )
+    assert "Reflection" in mined or "Worked" in mined or "write_file" in mined, (
+        f"Reflection not stored for self-improvement mining. Contents: {mined[:300]}"
     )
+    # …but never recalled into prompts as operator memory (it poisoned live replies; see
+    # tests/test_reflections_not_recalled.py).
+    recalled = " ".join(r.get("content", "") for r in db_mod.get_recent_learnings(n=20))
+    assert "Reflection (" not in recalled, f"agent bookkeeping recalled as operator memory: {recalled[:300]}"
 
 
 def test_personal_knowledge_graph_invalidation_on_write(monkeypatch, tmp_path):

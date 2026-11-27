@@ -22,7 +22,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-REPO_ROOT = Path(__file__).resolve().parent.parent
+AGENT_DIR = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {"venv", ".venv", "__pycache__", ".git", "node_modules", "models"}
 
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ class Issue:
         self.note = note
 
     def __str__(self):
-        rel = self.file.relative_to(REPO_ROOT)
+        rel = self.file.relative_to(AGENT_DIR)
         return f"  [{self.check}] {rel}:{self.line}\n    {self.snippet}\n    ^ {self.note}"
 
 
@@ -76,7 +76,7 @@ def report(check, file, line, snippet, note):
 _RE_RESET_TRUE = re.compile(r"create_completion\s*\([^)]*reset\s*=\s*True")
 
 def check_reset_kwarg():
-    for f in py_files(REPO_ROOT):
+    for f in py_files(AGENT_DIR):
         if f.name.startswith("check_"):  # skip scanner files themselves
             continue
         for i, line in enumerate(lines_of(f), 1):
@@ -97,7 +97,7 @@ _RE_RAW_STEPS = re.compile(r'steps\[-1\]\.get\(.["\']result')
 _RE_STRIP_NEARBY = re.compile(r"strip_junk_from_reply")
 
 def check_strip_missing():
-    for f in py_files(REPO_ROOT / "routers"):
+    for f in py_files(AGENT_DIR / "routers"):
         src_lines = lines_of(f)
         for i, line in enumerate(src_lines, 1):
             if _RE_RAW_STEPS.search(line):
@@ -119,7 +119,7 @@ _RE_AWAIT_EXEC = re.compile(r"await\s+.*run_in_executor")
 _RE_CONSUMER = re.compile(r"\bwhile\s+True\b|async\s+for\b")
 
 def check_await_executor():
-    for f in py_files(REPO_ROOT / "routers"):
+    for f in py_files(AGENT_DIR / "routers"):
         src_lines = lines_of(f)
         for i, line in enumerate(src_lines, 1):
             if _RE_AWAIT_EXEC.search(line):
@@ -143,7 +143,7 @@ _RE_FTS_ESCAPE = re.compile(r'_fts_match_query|_fts_q|\.replace\s*\(.*["\']["\']
 _RE_VEC0_SAFE = re.compile(r'serialize_float32|vec_idx|vec0|distance_metric', re.IGNORECASE)
 
 def check_fts_escape():
-    for f in py_files(REPO_ROOT):
+    for f in py_files(AGENT_DIR):
         if f.name.startswith("check_"):  # skip scanner files
             continue
         src_lines = lines_of(f)
@@ -172,7 +172,7 @@ _RE_SILENT_YIELD = re.compile(r'^\s*yield\s+["\']["\']')  # only flag silent yie
 # and returns empty tokens to the streaming consumer.
 
 def check_silent_except():
-    for f in py_files(REPO_ROOT / "services"):
+    for f in py_files(AGENT_DIR / "services"):
         # Only scan inference-path files where silent yields are dangerous
         if f.name not in ("inference_router.py", "llm_gateway.py", "structured_gen.py",
                           "retrieval.py", "context_manager.py", "coordinator.py"):
@@ -210,11 +210,11 @@ def check_gate_injection():
     stripper_in_pipeline = False
     try:
         stripper_in_pipeline = "strip_junk_from_reply" in (
-            REPO_ROOT / "agent_loop.py"
+            AGENT_DIR / "agent_loop.py"
         ).read_text(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    for f in py_files(REPO_ROOT):
+    for f in py_files(AGENT_DIR):
         src_lines = lines_of(f)
         for i, line in enumerate(src_lines, 1):
             if _RE_GATE_INJECT.search(line):
@@ -233,7 +233,7 @@ def check_gate_injection():
 def check_strip_junk_coverage():
     # strip_junk_from_reply was extracted from agent_loop.py (which now only re-exports it) into
     # services/agent/response_builder.py — target the real definition or this guard silently no-ops.
-    target = REPO_ROOT / "services" / "agent" / "response_builder.py"
+    target = AGENT_DIR / "services" / "agent" / "response_builder.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
@@ -267,7 +267,7 @@ _RE_DRAFT_MODEL = re.compile(r'kwargs\[.draft_model.\]')
 _RE_SCORES_RESIZE = re.compile(r'scores\s*=\s*np\.ndarray|_logits_all.*scores')
 
 def check_logits_mismatch():
-    for f in py_files(REPO_ROOT / "services"):
+    for f in py_files(AGENT_DIR / "services"):
         src_lines = lines_of(f)
         src = "\n".join(src_lines)
         if _RE_DRAFT_MODEL.search(src):
@@ -292,7 +292,7 @@ def check_stop_sequences():
     # llm_gateway.py moved to services/llm/. Also: the generic "\n## " stop was INTENTIONALLY removed
     # (it aborted generation at any legit markdown H2), so this no longer requires it — it now checks
     # the stops that MUST remain: the aspect-name dialogue-tag stops + endoftext.
-    target = REPO_ROOT / "services" / "llm" / "llm_gateway.py"
+    target = AGENT_DIR / "services" / "llm" / "llm_gateway.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
@@ -326,7 +326,7 @@ _KNOWN_KWARG_MISMATCHES = [
 
 def check_kwarg_mismatches():
     for call_re, callee_file, callee_fn, kwarg in _KNOWN_KWARG_MISMATCHES:
-        callee_path = REPO_ROOT / callee_file
+        callee_path = AGENT_DIR / callee_file
         if not callee_path.exists():
             continue
         callee_src = callee_path.read_text(encoding="utf-8", errors="replace")
@@ -334,7 +334,7 @@ def check_kwarg_mismatches():
         fn_match = re.search(rf"def {re.escape(callee_fn)}\s*\(([^)]*)\)", callee_src)
         if fn_match and kwarg not in fn_match.group(1):
             # Find a call site
-            for f in py_files(REPO_ROOT):
+            for f in py_files(AGENT_DIR):
                 for i, line in enumerate(lines_of(f), 1):
                     if call_re.search(line):
                         report("KWARG_MISMATCH", f, i, line,
@@ -355,7 +355,7 @@ _HEAVY_SECTIONS = [
 _RE_SMALL_GUARD = re.compile(r"_small_model|small_model_mode|n_ctx.*<=.*4096|4096.*n_ctx")
 
 def check_context_overflow_guard():
-    target = REPO_ROOT / "agent_loop.py"
+    target = AGENT_DIR / "agent_loop.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
@@ -383,7 +383,7 @@ def check_context_overflow_guard():
 _RE_APPLY_TO_CONFIG = re.compile(r"apply_to_config|hardware_detect|hardware_probe")
 
 def check_hardware_probe_hooked():
-    target = REPO_ROOT / "services" / "llm" / "llm_gateway.py"
+    target = AGENT_DIR / "services" / "llm" / "llm_gateway.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
@@ -407,7 +407,7 @@ _RE_CAP_SUMMARY = re.compile(r"get_capability_summary|capability_summary")
 
 def check_capability_summary_injected():
     # Post-refactor the system prompt is assembled in services/prompts/system_head_builder.py
-    target = REPO_ROOT / "services" / "prompts" / "system_head_builder.py"
+    target = AGENT_DIR / "services" / "prompts" / "system_head_builder.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
@@ -475,5 +475,5 @@ if __name__ == "__main__":
         if arg == "--path" and i + 1 < len(sys.argv[1:]):
             root_override = Path(sys.argv[i + 2]).resolve()
     if root_override:
-        REPO_ROOT = root_override
+        AGENT_DIR = root_override
     run_all()

@@ -152,18 +152,41 @@ def _group_similar(learnings: list[dict]) -> list[list[dict]]:
     return groups
 
 
+def _first_sentence(c: str) -> str:
+    # First sentence (boundary = . ! ? followed by whitespace), not the first '.' — the old split('.')[0]
+    # cut mid-string on decimals ('3.14'), abbreviations ('e.g.'), and URLs.
+    return re.split(r"(?<=[.!?])\s+", c, maxsplit=1)[0][:120]
+
+
+def _same_statement_new_value(newer: str, older: str) -> bool:
+    """Same sentence with one or two words changed: "favorite color code is teal-d2c3" -> "... teal-ebab"."""
+    a, b = newer.lower().split(), older.lower().split()
+    return len(a) == len(b) and 0 < sum(x != y for x, y in zip(a, b)) <= 2
+
+
 def _summarize_group(group: list[dict]) -> str:
-    """One short summary for a group of similar learnings."""
-    parts = []
-    for L in group:
+    """One short summary for a group of similar learnings — NEWEST first.
+
+    Merging used to keep input order (oldest first): "my favorite color code is teal-d2c3" then the update
+    "... teal-ebab" became "...teal-d2c3. ...teal-ebab." and, live, Layla answered with the OLD value. A
+    later merge keeps only each row's first sentence and at most three parts, so the newest value could
+    then be dropped entirely. Now the newest statement leads (and so survives every later merge), and an
+    older statement of the same fact with a different value is dropped.
+    """
+    ordered = sorted(group, key=lambda L: (str(L.get("created_at") or ""), L.get("id") or 0), reverse=True)
+    parts: list[str] = []
+    for L in ordered:
         c = (L.get("content") or "").strip()
-        if c:
-            # First sentence (boundary = . ! ? followed by whitespace), not the first '.' — the old
-            # split('.')[0] cut mid-string on decimals ('3.14'), abbreviations ('e.g.'), and URLs.
-            import re as _re
-            first = _re.split(r"(?<=[.!?])\s+", c, maxsplit=1)[0][:120]
-            if first and first not in parts:
-                parts.append(first)
+        if not c:
+            continue
+        first = _first_sentence(c)
+        if not first or first in parts:
+            continue
+        # An older statement of the same fact with a different value is DROPPED. It used to be kept as
+        # "Earlier: ...", but live the model still answered with the labelled old value.
+        if any(_same_statement_new_value(p, first) for p in parts):
+            continue
+        parts.append(first)
     if not parts:
         return "Merged experience (no content)."
     summary = " ".join(parts[:3])
@@ -214,7 +237,9 @@ def memory_distill(learnings: list[dict]) -> dict:
     learnings: list of dicts with keys id, content, type, created_at (e.g. get_recent_learnings).
     Returns: {"merged_groups": N, "removed": M, "added": K}.
     """
-    if not learnings or len(learnings) < 2:
+    # Never merge Layla's own bookkeeping: a merged row loses its source and then passes as a fact.
+    learnings = [L for L in (learnings or []) if not (L.get("content") or "").lstrip().startswith("Reflection (")]
+    if len(learnings) < 2:
         return {"merged_groups": 0, "removed": 0, "added": 0}
     groups = _group_similar(learnings)
     return _merge_groups(groups)
@@ -231,7 +256,8 @@ def memory_distill_semantic(learnings: list[dict], threshold: float = 0.75) -> d
         import numpy as np
 
         from layla.memory.vector_store import embed
-        valid = [(i, L) for i, L in enumerate(learnings) if (L.get("content") or "").strip()]
+        valid = [(i, L) for i, L in enumerate(learnings) if (L.get("content") or "").strip()
+                 and not (L.get("content") or "").lstrip().startswith("Reflection (")]
         if len(valid) < 2:
             return memory_distill(learnings)
         subset = [v[1] for v in valid]

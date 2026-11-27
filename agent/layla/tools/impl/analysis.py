@@ -779,8 +779,6 @@ def embedding_generate(text: str | list, normalize: bool = True) -> dict:
     Returns: embedding(s) as list of floats, dimension, model name.
     """
     try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.memory.vector_store import _get_embedder
         embedder = _get_embedder()
         is_batch = isinstance(text, list)

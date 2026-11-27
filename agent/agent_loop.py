@@ -604,7 +604,8 @@ def autonomous_run(
                 return _mem_early
         except Exception as _mem_e:
             logger.debug("pre-lock memory-command fast path skipped: %s", _mem_e)
-        with schedule_slot(priority=priority):
+        from services.llm.llm_gateway import routing_goal as _routing_goal
+        with schedule_slot(priority=priority), _routing_goal(goal):
             with _autonomous_run_serialize_lock(workspace_root):
                 return _autonomous_run_impl(
                     goal, context, workspace_root, allow_write, allow_run,

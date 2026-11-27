@@ -103,6 +103,9 @@ def vs(monkeypatch):
     # runtime_config.json happens to say.
     import runtime_safety as rs
     monkeypatch.setattr(rs, "load_config", lambda *a, **k: {"embedder_prefer_quality": False})
+    # These tests are about WHICH model loads. Whether it loads from the local HF cache is
+    # test_embedder_loads_offline's job; without this, a box with the model cached sees a snapshot path.
+    monkeypatch.setattr(_vs, "_local_model_path", lambda repo_id: repo_id)
 
     yield _vs
 

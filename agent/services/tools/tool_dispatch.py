@@ -52,7 +52,7 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
     path = str(_d.get("path") or "").strip()
     content = _d.get("content")
     if not path or content is None:
-        gp, gc = al._extract_file_and_content(goal)
+        gp, gc = al._extract_file_and_content(_operator_text(ctx, goal))
         path = path or gp
         if content is None:
             content = gc
@@ -250,11 +250,25 @@ def _arg_or_goal_path(ctx, goal: str, key: str = "path") -> str:
     return ""
 
 
+def _operator_text(ctx: DispatchContext, goal: str) -> str:
+    """The text a goal-string FALLBACK may mine for a path/command/body: the operator's own message.
+
+    After the first step decision_loop rebuilds `goal` as message + "[Tool results so far]:\\n…", and
+    _extract_path takes any token containing ":" — live it handed list_dir the path "far]:" (from "so far]:"),
+    so the listing failed and the reply reported a nonexistent path. Never mine our own scaffolding.
+    """
+    try:
+        orig = (ctx.state.get("original_goal") or "").strip()
+    except Exception:
+        orig = ""
+    return orig or goal
+
+
 def _handle_read_file(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, _, TOOLS = _imports()
     state = ctx.state
 
-    path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal)
+    path = _arg_or_goal_path(ctx, goal) or al._extract_path(_operator_text(ctx, goal))
     if not path:
         state["status"] = "parse_failed"
         return DispatchResult(handled=True, flow="break", goal=goal)
@@ -278,7 +292,7 @@ def _handle_read_file(intent: str, goal: str, ctx: DispatchContext) -> DispatchR
 def _handle_list_dir(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, _, TOOLS = _imports()
 
-    path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal) or ctx.workspace
+    path = _arg_or_goal_path(ctx, goal) or al._extract_path(_operator_text(ctx, goal)) or ctx.workspace
     return _base_tool_handler(
         ctx, "list_dir", TOOLS["list_dir"]["fn"],
         args={"path": path},
@@ -319,7 +333,7 @@ def _handle_grep_code(intent: str, goal: str, ctx: DispatchContext) -> DispatchR
     parts = goal.split()
     pattern = parts[-1] if parts else ""
     grep_path = ctx.workspace
-    maybe_path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal)
+    maybe_path = _arg_or_goal_path(ctx, goal) or al._extract_path(_operator_text(ctx, goal))
     if maybe_path and Path(maybe_path).suffix:
         probe = al._maybe_preprobe_file(ctx.state, maybe_path)
         al._apply_probe_guidance(ctx.state, "grep_code", maybe_path, probe)
@@ -475,8 +489,8 @@ def _handle_apply_patch(intent: str, goal: str, ctx: DispatchContext) -> Dispatc
     if state.get("research_lab_root"):
         return _lab_blocked("apply_patch", state)
 
-    path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal)
-    patch_body = _extract_patch_text(goal)
+    path = _arg_or_goal_path(ctx, goal) or al._extract_path(_operator_text(ctx, goal))
+    patch_body = _extract_patch_text(_operator_text(ctx, goal))
 
     if path:
         probe = al._maybe_preprobe_file(state, path)
@@ -653,7 +667,7 @@ def _handle_shell(intent: str, goal: str, ctx: DispatchContext) -> DispatchResul
         except Exception:
             argv = None
     if not argv:
-        argv = al._extract_shell_argv(goal)
+        argv = al._extract_shell_argv(_operator_text(ctx, goal))
     if not argv:
         state["status"] = "parse_failed"
         return DispatchResult(handled=True, flow="break", goal=goal)
@@ -935,7 +949,7 @@ def _handle_understand_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
 
     path = (decision.get("args") or {}).get("path") if decision else None
     if not path:
-        path = al._extract_path(goal)
+        path = al._extract_path(_operator_text(ctx, goal))
     if not path:
         state["status"] = "parse_failed"
         return DispatchResult(handled=True, flow="break", goal=goal)
@@ -1000,7 +1014,7 @@ def _handle_generic(intent: str, goal: str, ctx: DispatchContext) -> DispatchRes
     if "repo" not in args and intent.startswith("git_"):
         args["repo"] = workspace
     if ("path" not in args or not args.get("path")) and intent in ("parse_gcode", "stl_mesh_info", "tail_file"):
-        path = al._extract_path(goal)
+        path = al._extract_path(_operator_text(ctx, goal))
         if path:
             args["path"] = path
     if "root" not in args and intent in ("search_replace", "rename_symbol", "search_codebase"):
@@ -1090,7 +1104,19 @@ def dispatch_tool_intent(intent: str, goal: str, ctx: DispatchContext) -> Dispat
 
     Returns ``DispatchResult(handled=False)`` if the intent is not a tool
     (e.g. ``"reason"``, ``"finish"``).
+
+    Marks the thread as agent-loop tool use while it runs. Reliability learning reads only attributed
+    rows, and the marker used to be set solely by core.executor.run_tool — which only the MCP server
+    calls — so every one of the agent's own tool calls was recorded unattributed (live DB: 114 of 114
+    rows context='') and tool-reliability policy and planner preferences never had data.
     """
+    from services.observability._legacy_observability import TOOL_SOURCE_AGENT, tool_invocation_source
+
+    with tool_invocation_source(TOOL_SOURCE_AGENT):
+        return _dispatch_tool_intent(intent, goal, ctx)
+
+
+def _dispatch_tool_intent(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     handler = _HANDLER_MAP.get(intent)
     if handler is not None:
         return handler(intent, goal, ctx)

@@ -34,12 +34,28 @@ TOOLS: dict = {}
 
 
 def _resolve_sandboxed_path(path: str) -> Path:
-    p = Path(path)
-    if p.is_absolute():
-        return p.resolve()
     base = getattr(_effective_sandbox, "path", None)
     root = Path(base) if base else _get_sandbox()
-    return (Path(root) / path).resolve()
+    raw = str(path or "").strip()
+    # Models address the workspace root as "/", ".", "./" or "" (live, jinx-20b: list_dir {"path": "/"}).
+    # On Windows "/" resolved to C:\ -> "Path not found", and the reply turned that into "the workspace is
+    # empty". These all mean the workspace root.
+    if raw.strip("/\\.") == "":
+        return Path(root).resolve()
+    # "/workspace", "workspace", or the root folder's own name also mean the root (live: list_dir
+    # {"path": "/workspace"} -> "Path not found" -> "your workspace path is invalid") — unless a real
+    # subfolder by that name exists.
+    _alias = raw.replace("\\", "/").strip("/").removeprefix("./").strip("/").lower()
+    if _alias in ("workspace", Path(root).name.lower()) and not (Path(root) / _alias).exists():
+        return Path(root).resolve()
+    p = Path(raw)
+    if p.is_absolute():
+        return p.resolve()
+    # Windows: "/notes.md" is rooted but drive-less — not absolute, and joining it would jump to the drive
+    # root. A model means workspace-relative.
+    if p.root and not p.drive:
+        raw = raw.lstrip("/\\")
+    return (Path(root) / raw).resolve()
 
 
 def _ensure_inside_sandbox(target: Path) -> tuple[bool, dict | None]:
@@ -697,8 +713,6 @@ def understand_file_tool(path: str, content: str | None = None) -> dict:
             ok, err = _ensure_inside_sandbox(target)
             if not ok:
                 return err or {"ok": False, "error": "Outside sandbox"}
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(agent_dir))
         from layla.file_understanding import analyze_file
         if content is not None:
             return {"ok": True, **analyze_file(file_path=path, content=content)}

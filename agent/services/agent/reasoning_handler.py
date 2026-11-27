@@ -47,6 +47,23 @@ def handle_reasoning_intent(
     # Use run_completion through agent_loop's namespace so tests can monkeypatch it.
     run_completion = _al.run_completion
 
+    # The reply answers what the OPERATOR asked. decision_loop rebinds `goal` to the model's
+    # revised_objective; live on jinx-20b that "objective" was "I have enough context to answer.", which
+    # became the prompt's "User:" line — so the reply answered its own note instead of the question
+    # ("Say hello" -> "Probe_token.txt exists."; "what sentence did I ask you to remember?" -> a quoted
+    # prompt line). A reframed objective may steer the tool loop; it never replaces the operator's words.
+    # The tool results travel WITH the question: replacing `goal` wholesale also dropped decision_loop's
+    # "[Tool results so far]" block, leaving only the system head's pinned LAST step — so a successful
+    # read_file followed by anything (live: a blocked duplicate read) was invisible to the reply, which then
+    # answered "What is the secret token?" from an unrelated memory ("teal-745e").
+    _operator = (state.get("original_goal") or "").strip()
+    if _operator:
+        goal = _operator
+        _steps = state.get("steps") or []
+        if any(isinstance(s, dict) and s.get("action") not in (None, "", "reason", "think", "none", "pre_read_probe")
+               for s in _steps):
+            goal = _operator + "\n\n[Tool results so far]:\n" + _al._format_steps(_steps)
+
     active_aspect = run_params["active_aspect"]
     cfg = run_params["cfg"]
     workspace = run_params["workspace"]

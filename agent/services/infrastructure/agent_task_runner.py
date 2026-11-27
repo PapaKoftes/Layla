@@ -429,7 +429,9 @@ def _task_public(task: dict) -> dict:
         tail_n = 50
     out["progress"] = pe
     out["progress_tail"] = pe[-tail_n:] if pe else []
-    return out
+    # The stored run state carries non-JSON values (e.g. the _recent_exact_calls set); without this GET
+    # /agent/tasks/{id} raised "Object of type set is not JSON serializable" -> 500 on every poll.
+    return _json_safe(out)
 
 
 def _json_safe(value):

@@ -16,8 +16,7 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-AGENT_DIR = Path(__file__).resolve().parent.parent
+from runtime_safety import AGENT_DIR, REPO_ROOT  # noqa: E402,F401 — one owner for these paths
 
 # Pip package names allowed for automatic install (security: no arbitrary packages).
 #
@@ -283,7 +282,12 @@ def missing_gguf_recovery(
 ) -> dict[str, Any]:
     """Structured guidance when no valid GGUF is on disk."""
     fn = (model_filename or "").strip() or "(not set)"
-    md = models_dir.resolve() if models_dir else REPO_ROOT / "models"
+    if models_dir:
+        md = models_dir.resolve()
+    else:
+        import runtime_safety
+
+        md = runtime_safety.models_dir()
     exists = md.exists()
     ggufs = sorted(p.name for p in md.glob("*.gguf")) if exists else []
 

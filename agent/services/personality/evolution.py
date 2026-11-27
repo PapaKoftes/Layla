@@ -321,9 +321,12 @@ class PersonalityEvolution:
                             "casual": "casual conversation",
                         }
                         label = type_labels.get(dominant, dominant)
+                        # No live count and a coarse share: this sits in the stable head, and an exact
+                        # "(74% of 274 interactions)" changed every turn, so the whole prompt after it
+                        # (92% of the reply prompt) had to be re-processed each turn instead of reused.
                         hints.append(
                             f"Most interactions with this aspect involve {label} "
-                            f"({dominant_pct:.0f}% of {total} interactions)."
+                            f"(about {int(round(dominant_pct / 10.0)) * 10}%)."
                         )
 
             if not hints:

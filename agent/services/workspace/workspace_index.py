@@ -19,7 +19,8 @@ _workspace_graph: dict[str, dict[str, Any]] = {}
 _workspace_graph_edges: list[tuple[str, str, str]] = []
 _workspace_graph_root: Path | None = None
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from runtime_safety import REPO_ROOT  # noqa: E402 — one owner for the repo_root path
+
 WORKSPACE_INDEX_PATH = install_state_path(Path(__file__).resolve().parent.parent / "chroma_db")
 _COLLECTION_NAME = "workspace"
 _collection = None
@@ -178,8 +179,8 @@ def _get_collection():
     if _collection is not None:
         return _collection
     try:
-        import chromadb
-        client = chromadb.PersistentClient(path=str(WORKSPACE_INDEX_PATH))
+        from layla.memory.vector_store import chroma_client
+        client = chroma_client(WORKSPACE_INDEX_PATH)
         _collection = client.get_or_create_collection(
             name=_COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
@@ -499,8 +500,8 @@ def invalidate_if_changed(workspace_root: str | Path) -> bool:
         return False
     logger.info("workspace_index: changes detected in %s — invalidating semantic cache", root_str)
     try:
-        import chromadb
-        client = chromadb.PersistentClient(path=str(WORKSPACE_INDEX_PATH))
+        from layla.memory.vector_store import chroma_client
+        client = chroma_client(WORKSPACE_INDEX_PATH)
         try:
             client.delete_collection(_COLLECTION_NAME)
             logger.info("workspace_index: Chroma collection '%s' deleted for re-index", _COLLECTION_NAME)

@@ -1179,8 +1179,21 @@ def serve_values_md():
 
 
 _UI_DIR = (AGENT_DIR / "ui").resolve()
+
+
+class _RevalidatedStaticFiles(StaticFiles):
+    """UI assets: always revalidate (ETag -> cheap 304). They were sent with no Cache-Control, so browsers
+    cached them heuristically and kept running OLD css/js after an update while index.html (no-store) was
+    new — live: a fixed stylesheet still rendered the old layout until the browser cache expired."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 if _UI_DIR.is_dir():
-    app.mount("/layla-ui", StaticFiles(directory=str(_UI_DIR)), name="layla_ui_assets")
+    app.mount("/layla-ui", _RevalidatedStaticFiles(directory=str(_UI_DIR)), name="layla_ui_assets")
 
 
 @app.get("/sw.js", include_in_schema=False)

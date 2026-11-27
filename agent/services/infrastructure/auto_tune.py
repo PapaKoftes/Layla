@@ -26,6 +26,12 @@ from __future__ import annotations
 
 from services.infrastructure.hardware_detect import detect_hardware, get_recommended_settings
 
+# Probed once per process: the answer cannot change without a restart (a new llama-cpp build needs one),
+# and load_config re-applies auto-tune every time its cache expires. The first native call loads all of
+# llama.cpp's backend libraries; on GitHub's Windows runners that sometimes exceeded the 120s per-test
+# timeout (4 of 6 nightly master runs failed in load_config -> _gpu_offload_available).
+_GPU_OFFLOAD: bool | None = None
+
 
 def _gpu_offload_available() -> bool:
     """True only if a GPU is present AND the installed llama-cpp build can offload to it.
@@ -35,12 +41,15 @@ def _gpu_offload_available() -> bool:
     so a GPU box running a CPU-only build is (correctly, safely) treated as a CPU box until
     the GPU build is installed.
     """
-    try:
-        import llama_cpp
-        fn = getattr(llama_cpp, "llama_supports_gpu_offload", None)
-        return bool(fn()) if callable(fn) else False
-    except Exception:
-        return False
+    global _GPU_OFFLOAD
+    if _GPU_OFFLOAD is None:
+        try:
+            import llama_cpp
+            fn = getattr(llama_cpp, "llama_supports_gpu_offload", None)
+            _GPU_OFFLOAD = bool(fn()) if callable(fn) else False
+        except Exception:
+            _GPU_OFFLOAD = False
+    return _GPU_OFFLOAD
 
 # Keys the suite owns. A user value only wins if the key is listed in
 # `auto_tune_locked_keys` (or auto_tune is disabled). Everything else is derived.

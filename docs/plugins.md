@@ -35,4 +35,4 @@ plugins/
 
 ## Example
 
-See `plugins/example/plugin.yaml` for a minimal plugin.
+See `plugins/_example/plugin.yaml` for a minimal plugin. Folders whose names start with `_` are examples and are never loaded; copy it to a new name to use it.

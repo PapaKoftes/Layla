@@ -37,12 +37,10 @@ def refresh_for_workspace(workspace_root: str, cfg: dict[str, Any] | None = None
         _last_scheduled[key] = now
 
     def _job() -> None:
-        try:
-            from services.workspace.project_discovery import run_project_discovery
-
-            run_project_discovery()
-        except Exception as e:
-            logger.debug("workspace_awareness discovery: %s", e)
+        # No LLM project discovery here. It ran a 400-token model completion after EVERY /agent request
+        # (5s debounce) and discarded the result, holding the model lock so the operator's next turn waited
+        # behind it (live: "project_discovery timed out" warnings, and the GPU busy between turns). The
+        # explicit discovery endpoints still run it on request.
         try:
             from layla.tools.registry import scan_repo, set_effective_sandbox
 

@@ -85,7 +85,9 @@ def run_benchmark(model_name: str | None = None) -> dict:
 
         prompt = BENCHMARK_PROMPT * 4
         start = time.perf_counter()
-        with llm_serialize_lock:
+        from services.llm.llm_gateway import inference_lock
+
+        with inference_lock(cfg):
             out = llm.create_completion(prompt, max_tokens=BENCHMARK_TOKENS, temperature=0.0, stop=[])
         elapsed = time.perf_counter() - start
 

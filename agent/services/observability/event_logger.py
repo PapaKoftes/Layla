@@ -31,9 +31,15 @@ EventType = Literal[
 # The structured event names the legacy observability layer emits (now mirrored into this ring so
 # /metrics recent_events populates) — recognized so they don't each log an "unknown event_type" warning.
 _LEGACY_EVENT_TYPES: frozenset[str] = frozenset({
-    "agent_response", "run_budget_summary", "tool_call", "learning_saved", "learning_skipped",
-    "study_started", "study_completed", "memory_retrieval", "agent_plan_created",
+    "agent_decision", "agent_plan_completed", "agent_plan_created", "agent_plan_step", "agent_response",
+    "agent_shutdown", "agent_started", "execution_trace", "learning_saved", "learning_skipped",
+    "memory_retrieval", "mission_completed", "mission_created", "mission_failed", "mission_started",
+    "mission_step", "planner_invoked", "prompt_assembled", "retrieval_cache_hit", "retrieval_cache_miss",
+    "retrieval_results", "run_budget_summary", "study_completed", "study_started", "tool_call",
+    "tool_result",
 })
+# Every name _legacy_observability._log_event emits (test_event_types_registered checks it by AST). The
+# hand-kept list had drifted to 9 of 26, so each turn logged ~15 spurious "Unknown event_type" warnings.
 
 _VALID_EVENT_TYPES: frozenset[str] = frozenset(EventType.__args__) | _LEGACY_EVENT_TYPES  # type: ignore[attr-defined]
 _BUFFER_MAXLEN = 500

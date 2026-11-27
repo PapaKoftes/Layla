@@ -9,7 +9,7 @@ if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-def test_think_only_run_is_capped_not_spun(monkeypatch, tmp_path):
+def _run_always_thinking(monkeypatch, tmp_path):
     import agent_loop
 
     calls = {"n": 0}
@@ -50,6 +50,21 @@ def test_think_only_run_is_capped_not_spun(monkeypatch, tmp_path):
         context="", workspace_root=str(tmp_path), allow_write=True, allow_run=False,
         conversation_history=[], aspect_id="", show_thinking=False,
     )
-    # Capped at ~no_op_cap (8) iterations — NOT spinning until the 8s max_runtime.
-    assert calls["n"] <= 12, f"think loop was not capped: {calls['n']} decision calls"
+    return calls["n"], result
+
+
+def test_think_only_run_is_capped_not_spun(monkeypatch, tmp_path):
+    n, result = _run_always_thinking(monkeypatch, tmp_path)
+    # Capped — NOT spinning until the 8s max_runtime.
+    assert n <= 12, f"think loop was not capped: {n} decision calls"
     assert result is not None
+
+
+def test_two_thinks_in_a_row_then_it_answers_as_a_normal_finish(monkeypatch, tmp_path):
+    """Live: "What is my favorite color code?" thought 8 times (26-107s) and ended as tool_limit."""
+    n, result = _run_always_thinking(monkeypatch, tmp_path)
+    steps = [s.get("action") for s in (result.get("steps") or [])]
+    assert n == 2, f"{n} decision calls; steps={steps}"
+    assert steps == ["think", "think", "reason"], steps
+    assert result.get("status") == "finished", result.get("status")
+    assert (result.get("steps") or [{}])[-1].get("result") == "final answer", result.get("steps")

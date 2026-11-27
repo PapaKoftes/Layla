@@ -329,7 +329,14 @@ def semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None
 
 
 def decompose_goal(goal: str) -> list:
-    """If objective is broad, return 2-3 sub-objectives; else return []."""
+    """If objective is broad, return 2-3 sub-objectives; else return [].
+
+    Judged on the operator's words only. The goal arrives prefixed with prompt_optimizer enrichments
+    ("[Active workspace: C:\\...]"), and that prefix alone made every workspace request — "Say hello"
+    included — longer than 80 chars, i.e. "broad": an extra ~4 s model call per turn whose sub-objectives
+    were then injected as the turn's TASK.
+    """
+    goal = re.sub(r"^(?:\s*\[[^\]\n]*\]\s*\n)+", "", goal or "")
     if not goal or len(goal.strip()) < 20:
         return []
     g = goal.lower().strip()
@@ -1058,8 +1065,8 @@ def _gather_workspace_context(goal: str, cfg: dict, workspace_root: str, packed_
     except Exception as _e:
         logger.debug("context[project_context] failed: %s", _e)
 
-    if sub_goals:
-        workspace_context_parts.append("Sub-objectives for this run: " + "; ".join(sub_goals[:3]))
+    # Sub-objectives are NOT repeated here: the TASK section (current_goal) carries them. This duplicate sat
+    # mid-head and changed every turn, so everything after it was re-processed instead of reused.
     # BL-241 world model — situational awareness (current project/blockers, repo index, machine,
     # mode) belongs in the agent_state section (its own budget) so it isn't first-to-truncate at
     # the tail of system_instructions. Was an inert GET /world nobody read. Skipped on phatic turns.

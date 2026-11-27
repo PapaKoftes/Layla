@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("layla")
 
-_AGENT_DIR = Path(__file__).resolve().parent.parent
+_AGENT_DIR = Path(__file__).resolve().parent.parent.parent  # agent/ (file is agent/services/<pkg>/)
 
 
 # ── Result type ────────────────────────────────────────────────────────────────
@@ -92,7 +92,17 @@ def save_learning(content: str, kind: str = "general", **kwargs: Any) -> int:
     except Exception:
         pass
     kwargs = _apply_sensitivity_policy(content, kwargs)
-    return _save_learning(content=content, kind=kind, **kwargs)
+    new_id = _save_learning(content=content, kind=kind, **kwargs)
+    # A newer "<subject> is <value>" fact replaces older values of the same subject (layla.memory.learnings).
+    # Layla's own bookkeeping never supersedes anything.
+    if isinstance(new_id, int) and new_id > 0 and str(kwargs.get("source") or "") != "reflection_engine":
+        try:
+            from layla.memory.learnings import supersede_same_subject
+
+            supersede_same_subject(content, new_id)
+        except Exception as e:
+            logger.debug("fact supersede skipped: %s", e)
+    return new_id
 
 
 # ── PLAN ITEM 20: sensitivity classification for encryption at rest ──────────

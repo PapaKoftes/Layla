@@ -8,7 +8,7 @@ from pathlib import Path
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from runtime_safety import REPO_ROOT  # noqa: E402 — one owner for the repo_root path
 
 
 def load_plugins(cfg: dict | None = None) -> dict:
@@ -34,7 +34,9 @@ def load_plugins(cfg: dict | None = None) -> dict:
         return result
 
     for plugin_path in sorted(plugins_dir.iterdir()):
-        if not plugin_path.is_dir():
+        # "_name" / ".name" folders are templates and examples (plugins/_example, agent/plugins/_template),
+        # never live plugins.
+        if not plugin_path.is_dir() or plugin_path.name.startswith(("_", ".")):
             continue
         manifest_path = plugin_path / "plugin.yaml"
         if not manifest_path.exists():

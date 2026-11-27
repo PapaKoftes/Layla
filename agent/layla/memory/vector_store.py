@@ -219,6 +219,21 @@ def embedder_status() -> dict[str, Any]:
     }
 
 
+def _local_model_path(repo_id: str) -> str:
+    """The cached local snapshot of a HuggingFace model if present, else the repo id (first-run download).
+
+    from_pretrained(<repo id>) asks huggingface.co for the latest revision on EVERY process start even when
+    the files are cached ("Fetching 10 files" in the startup log) — an outbound call per launch from an app
+    that promises no cloud, and a stall when offline. Loading the cached snapshot path makes no request.
+    """
+    try:
+        from huggingface_hub import snapshot_download
+
+        return snapshot_download(repo_id, local_files_only=True)
+    except Exception:
+        return repo_id
+
+
 def _get_embedder():
     """
     Load the embedding model once. Preference order:
@@ -255,7 +270,7 @@ def _get_embedder():
                 from model2vec import StaticModel
 
                 _m2v_name = EMBED_MODEL_STATIC
-                _static = StaticModel.from_pretrained(_m2v_name)
+                _static = StaticModel.from_pretrained(_local_model_path(_m2v_name))
                 _embedder = _Model2VecAdapter(_static)
                 _embedder_dim = int(_embedder.encode(["dimension probe"]).shape[1])
                 _current_model_name = _m2v_name
@@ -271,7 +286,7 @@ def _get_embedder():
             _record_embedder_failure(_st_err)
             raise
         try:
-            model = SentenceTransformer(EMBED_MODEL_QUALITY, trust_remote_code=True)
+            model = SentenceTransformer(_local_model_path(EMBED_MODEL_QUALITY), trust_remote_code=True)
             _embedder_dim = 768
             _current_model_name = EMBED_MODEL_QUALITY
             log.info("Embedding model: nomic-embed-text-v1.5 (768d)")
@@ -408,6 +423,19 @@ def embed_batch(texts: list[str]) -> list:
     return [v.astype("float32") for v in vecs]
 
 
+def chroma_client(path):
+    """The ONE place a ChromaDB client is built. chromadb's default Settings enable anonymized product
+    telemetry (PostHog) — an outbound call per client start / collection op, which VALUES.md forbids.
+    It only failed by accident (posthog API drift), so turn it off explicitly for every client."""
+    import chromadb
+    from chromadb.config import Settings
+
+    # With telemetry off chromadb sets posthog.disabled, but posthog>=6 changed capture()'s signature, so
+    # chromadb still logs a TypeError per event ("capture() takes 1 positional argument") — noise, not a send.
+    logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+    return chromadb.PersistentClient(path=str(path), settings=Settings(anonymized_telemetry=False))
+
+
 def _get_chroma_collection():
     """Get or initialize ChromaDB learnings collection. Thread-safe with RLock."""
     global _chroma_collection, _chroma_lock
@@ -427,8 +455,7 @@ def _get_chroma_collection():
             _chroma_collection = get_fallback_collection("learnings", _chroma_path())
             logger.info("vector_store: chromadb absent — using compiler-free fallback store (learnings)")
             return _chroma_collection
-        import chromadb
-        client = chromadb.PersistentClient(path=str(_chroma_path()))
+        client = chroma_client(_chroma_path())
         _chroma_collection = client.get_or_create_collection(
             name="learnings",
             metadata={"hnsw:space": "cosine"},
@@ -471,9 +498,7 @@ def rebuild_collection() -> dict:
     """
     global _chroma_collection
     try:
-        import chromadb
-
-        client = chromadb.PersistentClient(path=str(_chroma_path()))
+        client = chroma_client(_chroma_path())
         try:
             client.delete_collection("learnings")
             logger.info("ChromaDB: deleted old 'learnings' collection for rebuild")
@@ -664,8 +689,7 @@ def _get_knowledge_collection():
             _knowledge_collection = get_fallback_collection("knowledge", _chroma_path())
             logger.info("vector_store: chromadb absent — using compiler-free fallback store (knowledge)")
             return _knowledge_collection
-        import chromadb
-        client = chromadb.PersistentClient(path=str(_chroma_path()))
+        client = chroma_client(_chroma_path())
         _knowledge_collection = client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
         return _knowledge_collection
 

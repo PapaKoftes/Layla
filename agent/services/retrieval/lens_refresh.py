@@ -34,6 +34,10 @@ def rebuild_lens_knowledge() -> None:
         return
     for path in sorted(SOURCES_DIR.glob("*.md")):
         name = path.stem
+        if name.lower() == "readme":
+            # sources/README.md documents the folder; regenerating it produced a bogus "README" lens that
+            # load_lens_knowledge then injected into prompts as if it were domain knowledge.
+            continue
         try:
             content = path.read_text(encoding="utf-8").strip()
         except Exception:

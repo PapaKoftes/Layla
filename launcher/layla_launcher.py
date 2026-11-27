@@ -216,6 +216,7 @@ def main() -> int:
     env["LAYLA_ENGINE_AGENT_DIR"] = str(agent_dir)
     env["LAYLA_ENGINE_HOST"] = HOST
     env["LAYLA_ENGINE_PORT"] = str(PORT)
+    env["LAYLA_PORT"] = str(PORT)  # the port actually bound — mDNS advertises it to LAN peers
     _boot = (
         "import os, sys; sys.path.insert(0, os.environ['LAYLA_ENGINE_AGENT_DIR']); "
         "import uvicorn; uvicorn.run('main:app', host=os.environ['LAYLA_ENGINE_HOST'], "

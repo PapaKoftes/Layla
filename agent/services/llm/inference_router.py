@@ -23,7 +23,8 @@ from typing import Any, Generator
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from runtime_safety import REPO_ROOT  # noqa: E402 — one owner for the repo_root path
+
 _BACKENDS = ("llama_cpp", "openai_compatible", "ollama", "litellm", "onnx")
 _AUTO = "auto"
 
@@ -368,7 +369,9 @@ def run_completion_llama_cpp(
             except Exception:
                 pass
         kwargs.pop("reasoning_budget", None)  # not supported in 0.3.16
-        return llm.create_completion(prompt, stream=stream_mode, **kwargs)
+        from services.llm.prompt_format import format_raw_prompt
+
+        return llm.create_completion(format_raw_prompt(llm, prompt), stream=stream_mode, **kwargs)
     if stream:
         def gen():
             yielded_any = False
