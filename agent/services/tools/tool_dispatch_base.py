@@ -223,6 +223,8 @@ def _approval_break(intent, args, ctx) -> DispatchResult:
     approval_id = al._write_pending(intent, args)
     record_step(ctx.state, {
         "action": intent,
+        # the target (not the content) so the reply can say what waits: services.agent.turn.approval_waiting_message
+        "args": {k: args[k] for k in ("path", "file", "command") if isinstance(args, dict) and args.get(k)},
         "result": {
             "ok": False,
             "reason": "approval_required",

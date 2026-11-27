@@ -852,12 +852,41 @@ _REASONING_BLOCK_RE = re.compile(
 )
 
 
+_DECISION_ACTIONS = ("tool", "reason", "think", "none")
+
+
+def _strip_leading_decision_echo(t: str) -> str:
+    """Drop leading lines that echo the DECISION format ({"action":"tool","tool":"list_dir",…}).
+
+    Live on jinx-20b the final reply often opened with the decision it had just made, then the real
+    answer: '{"action":"tool",…}\\n\\nThe workspace contains: a.md, b.md'. is_junk_reply saw a reply
+    starting with "{" holding decision keys and discarded ALL of it — the answer included — so the
+    operator got "Ready. What do you need?". Only a line that parses as a decision object is removed.
+    """
+    if not t or not t.lstrip().startswith("{"):
+        return t
+    out = t.lstrip()
+    for _ in range(4):
+        line, sep, rest = out.partition("\n")
+        try:
+            obj = json.loads(line.strip())
+        except Exception:
+            break
+        if not (isinstance(obj, dict) and str(obj.get("action") or "").lower() in _DECISION_ACTIONS):
+            break
+        out = rest.lstrip() if sep else ""
+        if not out.startswith("{"):
+            break
+    return out
+
+
 def _strip_reasoning_traces(t: str) -> str:
     """Remove reasoning/CoT-model thinking wrappers (Qwen-QwQ, DeepSeek-R1, gpt-oss-harmony) — the
     model's PRIVATE chain-of-thought, never meant for the user. Handles paired
     <think>/<thinking>/<reasoning>/<scratchpad>/<reflection> blocks, the OpenAI-harmony
     <|channel|>analysis…<|end|> segment + leftover control tokens, and a DANGLING unclosed leading
-    <think>… (stream cut at max_tokens before the close tag)."""
+    <think>… (stream cut at max_tokens before the close tag). Also drops an echoed decision line."""
+    t = _strip_leading_decision_echo(t)
     if not t or "<" not in t:
         return t
     t = _REASONING_BLOCK_RE.sub("", t)

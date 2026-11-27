@@ -577,8 +577,33 @@ def llm_decision(
                         ]
                         _gd = majority_decision([s for s in _samples if s is not None])
                     else:
+                        _force = None
+                        try:
+                            from services.agent.forced_tool import forced_first_tool
+
+                            _force = forced_first_tool(
+                                (state.get("original_goal") or goal or ""),
+                                allow_write=bool(state.get("_allow_write")),
+                                valid_tools=valid_tools,
+                                steps=state.get("steps"),
+                                workspace_root=state.get("workspace_root") or "",
+                            )
+                        except Exception as _fexc:
+                            logger.debug("forced_first_tool skipped: %s", _fexc)
+                        if _force is None and "write_file" not in (valid_tools or ()):
+                            try:
+                                from services.safety.decision_policy import operator_requested_write
+
+                                if operator_requested_write(state) and not (state.get("steps") or [])[1:]:
+                                    logger.info("explicit write request but write_file not offered: policy_caps=%s",
+                                                state.get("policy_caps"))
+                            except Exception:
+                                pass
                         _gd = run_gbnf_agent_decision(
-                            _llm_g, prompt, max_tokens=max_tok, temperature=0.1, valid_tools=valid_tools
+                            _llm_g, prompt,
+                            # a forced write carries the file content in args: room for it
+                            max_tokens=max(max_tok, 768) if _force == "write_file" else max_tok,
+                            temperature=0.1, valid_tools=valid_tools, force_tool=_force,
                         )
                     if _gd is not None:
                         return _gd

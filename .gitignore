@@ -78,6 +78,8 @@ chroma/
 agent/layla/memory/chroma_db/
 # Stray Chroma dir if vector_store ever pointed at agent/chroma_db (do not commit index blobs)
 agent/chroma_db/
+# Workspace code index on a source checkout (services/workspace/workspace_index.py; per-user on installs)
+agent/services/chroma_db/
 *.sqlite3
 
 # OS and editor
@@ -93,6 +95,8 @@ knowledge/*.txt
 knowledge/*.md
 knowledge/fetched/
 knowledge/docs/
+# Operator imports via the app (personal; never committed)
+knowledge/imports/
 # Curated base knowledge — committed as part of the project
 !knowledge/README.md
 !knowledge/layla-vision.md

@@ -1301,7 +1301,10 @@ async def agent(req: AgentRequest, request: Request):
                     # content is blank, and TTS would then speak it. Give this branch the same
                     # standby the fast path uses so done.content is always non-empty and clean.
                     if not (text or "").strip():
-                        text = "Sorry — I couldn't generate a response just then. Please try again."
+                        from services.agent.turn import tool_result_fallback
+                        text = tool_result_fallback(result.get("steps")) or "Sorry — I couldn't generate a response just then. Please try again."
+                    from services.agent.turn import with_write_honesty
+                    text = with_write_honesty(text, goal or result.get("original_goal") or "", result.get("steps"))
                     text, _st_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
                     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
                     # THE streamed done-frame. `result["status"]` is "stream_pending" here — the
@@ -1534,8 +1537,9 @@ async def agent(req: AgentRequest, request: Request):
         response_text = "I couldn't understand the request. Please rephrase."
     elif not response_text:
         # When the raw output was all-echo (model echoed system prompt sections), it was
-        # stripped to empty. Return a neutral standby rather than a confusing error.
-        response_text = "Ready. What do you need?"
+        # stripped to empty. Show what a tool actually returned if that renders cleanly, else a neutral standby.
+        from services.agent.turn import tool_result_fallback
+        response_text = tool_result_fallback(result.get("steps")) or "Ready. What do you need?"
 
     if result.get("status") == "finished":
         try:
@@ -1545,6 +1549,8 @@ async def agent(req: AgentRequest, request: Request):
         except Exception:
             cfg = {}
         response_text = polish_output(response_text, cfg)
+    from services.agent.turn import with_write_honesty
+    response_text = with_write_honesty(response_text, goal or result.get("original_goal") or "", result.get("steps"))
     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
 
     # Post-model safety floor (symmetric with check_input): a Tier-1/Tier-2 payload the

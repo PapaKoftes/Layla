@@ -6,19 +6,32 @@ from __future__ import annotations
 
 from typing import Any
 
+_NON_TOOL_ACTIONS = ("reason", "think", "client_abort", "none", "pre_read_probe")
+# A tool call waiting on the OPERATOR did not fail — nothing ran. Scored as a failure it dropped a correct,
+# approval-gated write turn below 0.45, and caps_from_outcome_evaluation then forbade every mutating tool on
+# the conversation's NEXT turn: the agent stopped being able to write because it had asked permission.
+_PENDING_REASONS = frozenset({"approval_required"})
+
+
+def executed_tool_steps(steps: list | None) -> list[dict]:
+    """The tool steps that actually ran (the one owner for both evaluators below)."""
+    out = []
+    for s in steps or []:
+        if not isinstance(s, dict) or not s.get("action") or s.get("action") in _NON_TOOL_ACTIONS:
+            continue
+        r = s.get("result")
+        if isinstance(r, dict) and r.get("reason") in _PENDING_REASONS:
+            continue
+        out.append(s)
+    return out
+
 
 def evaluate_validation_matrix(state: dict[str, Any]) -> dict[str, Any]:
     """
     Deterministic multi-dimensional validation matrix.
     Each dimension returns 0..1 plus a short reason list.
     """
-    steps = state.get("steps") or []
-    tool_steps = [
-        s for s in steps
-        if isinstance(s, dict)
-        and s.get("action")
-        and s.get("action") not in ("reason", "think", "client_abort", "none", "pre_read_probe")
-    ]
+    tool_steps = executed_tool_steps(state.get("steps"))
 
     ok_n = 0
     fail_n = 0
@@ -141,7 +154,10 @@ def evaluate_outcome(state: dict[str, Any]) -> dict[str, Any]:
     Uses status, tool step results, last_verification, environment_aligned when present.
     """
     steps = state.get("steps") or []
-    tool_steps = [s for s in steps if s.get("action") and s["action"] not in ("reason", "think", "client_abort")]
+    tool_steps = executed_tool_steps(steps)
+    pending = len(steps) - len(tool_steps) - sum(
+        1 for s in steps if isinstance(s, dict) and (not s.get("action") or s.get("action") in _NON_TOOL_ACTIONS)
+    )
     ok_n = 0
     fail_n = 0
     issues: list[str] = []
@@ -163,7 +179,7 @@ def evaluate_outcome(state: dict[str, Any]) -> dict[str, Any]:
     score = 0.85 if finished else 0.35
     if fail_n:
         score *= max(0.15, 1.0 - 0.12 * fail_n)
-    if not tool_steps and finished:
+    if not tool_steps and finished and not pending:
         score = min(score, 0.7)
         issues.append("no_tool_steps: reply-only finish")
 

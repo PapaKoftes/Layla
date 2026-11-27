@@ -298,11 +298,17 @@ def get_tool_reliability(tool_name: str | None = None, n: int = 100, attributed_
     migrate()
     _src = "agent_loop"
     with _conn() as db:
+        # Learning reads each tool's most recent `n` attributed uses, not all time: with an all-time
+        # average, one stretch of failures from a since-fixed bug kept a tool below the
+        # caps_from_tool_reliability threshold (success < 0.35) forever, i.e. banned it permanently.
+        _recent = """(SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY tool_name ORDER BY created_at DESC, id DESC) AS _rn
+                        FROM tool_outcomes WHERE context=?) WHERE _rn <= ?)"""
+        _n = max(1, int(n or 100))
         if tool_name and attributed_only:
             rows = db.execute(
-                """SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
-                   FROM tool_outcomes WHERE tool_name=? AND context=? GROUP BY tool_name""",
-                (tool_name, _src),
+                f"""SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
+                   FROM {_recent} WHERE tool_name=? GROUP BY tool_name""",
+                (_src, _n, tool_name),
             ).fetchall()
         elif tool_name:
             rows = db.execute(
@@ -312,9 +318,9 @@ def get_tool_reliability(tool_name: str | None = None, n: int = 100, attributed_
             ).fetchall()
         elif attributed_only:
             rows = db.execute(
-                """SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
-                   FROM tool_outcomes WHERE context=? GROUP BY tool_name""",
-                (_src,),
+                f"""SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
+                   FROM {_recent} GROUP BY tool_name""",
+                (_src, _n),
             ).fetchall()
         else:
             rows = db.execute(

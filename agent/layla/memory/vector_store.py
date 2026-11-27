@@ -219,6 +219,21 @@ def embedder_status() -> dict[str, Any]:
     }
 
 
+def _local_model_path(repo_id: str) -> str:
+    """The cached local snapshot of a HuggingFace model if present, else the repo id (first-run download).
+
+    from_pretrained(<repo id>) asks huggingface.co for the latest revision on EVERY process start even when
+    the files are cached ("Fetching 10 files" in the startup log) — an outbound call per launch from an app
+    that promises no cloud, and a stall when offline. Loading the cached snapshot path makes no request.
+    """
+    try:
+        from huggingface_hub import snapshot_download
+
+        return snapshot_download(repo_id, local_files_only=True)
+    except Exception:
+        return repo_id
+
+
 def _get_embedder():
     """
     Load the embedding model once. Preference order:
@@ -255,7 +270,7 @@ def _get_embedder():
                 from model2vec import StaticModel
 
                 _m2v_name = EMBED_MODEL_STATIC
-                _static = StaticModel.from_pretrained(_m2v_name)
+                _static = StaticModel.from_pretrained(_local_model_path(_m2v_name))
                 _embedder = _Model2VecAdapter(_static)
                 _embedder_dim = int(_embedder.encode(["dimension probe"]).shape[1])
                 _current_model_name = _m2v_name
@@ -271,7 +286,7 @@ def _get_embedder():
             _record_embedder_failure(_st_err)
             raise
         try:
-            model = SentenceTransformer(EMBED_MODEL_QUALITY, trust_remote_code=True)
+            model = SentenceTransformer(_local_model_path(EMBED_MODEL_QUALITY), trust_remote_code=True)
             _embedder_dim = 768
             _current_model_name = EMBED_MODEL_QUALITY
             log.info("Embedding model: nomic-embed-text-v1.5 (768d)")

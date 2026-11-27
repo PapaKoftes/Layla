@@ -233,6 +233,7 @@ def run_decision_loop(
 
         # -- LLM decision call (skipped on the fast path above) --
         _t0 = time.perf_counter()
+        state["_allow_write"] = bool(allow_write)  # read by llm_decision's forced-first-tool check
         decision = None if _force_reason_now else _al._llm_decision(
             goal_for_decision, state, context, active_aspect, show_thinking, conversation_history or []
         )
@@ -331,7 +332,9 @@ def run_decision_loop(
         revised_objective = decision.get("revised_objective") if decision else None
         if revised_objective and isinstance(revised_objective, str) and revised_objective.strip():
             _al._emit_ux(state, ux_state_queue, _al.UX_STATE_REFRAMING_OBJECTIVE)
-            state["reflection_pending"] = True
+            # No "Does this direction align with your goals?" for a reframe: the reply answers the
+            # operator's own message (reasoning_handler), and jinx-20b emitted revised_objective on plain
+            # questions, tacking that question onto e.g. a one-token answer. Kept for a real strategy change.
             state["objective"] = revised_objective.strip()
             state.setdefault("original_goal", revised_objective.strip())
             state["consecutive_no_progress"] = 0

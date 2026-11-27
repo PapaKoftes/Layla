@@ -326,6 +326,21 @@ def count_learnings() -> int:
         return int(row["c"]) if row and row["c"] is not None else 0
 
 
+# Per-turn agent bookkeeping ("Reflection (<goal>): Worked: … | outcome_score=0.85") is stored in learnings for
+# self_improvement's own SQL mining, but it is NOT a memory about the operator. Recalled into prompts it
+# poisoned answers live: a reply was literally "list_dir succeeded; Task completed | Failed: None | …", and a
+# file question was answered with a token lifted from unrelated stored text. Excluded from recall reads.
+INTERNAL_LEARNING_SOURCES = ("reflection_engine",)
+_NOT_INTERNAL_SQL = "COALESCE({p}source,'') NOT IN (" + ",".join(f"'{s}'" for s in INTERNAL_LEARNING_SOURCES) + ")"
+
+
+def _has_source_col(db) -> bool:
+    try:
+        return any(r[1] == "source" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+    except Exception:
+        return False
+
+
 def get_recent_learnings(n: int = 30, aspect_id: str | None = None, min_score: float | None = None) -> list[dict]:
     """Recent learnings. If aspect_id given, prefer learning_type: Echo->preference, Morrigan->strategy, Nyx->fact."""
     migrate()
@@ -362,6 +377,8 @@ def get_recent_learnings(n: int = 30, aspect_id: str | None = None, min_score: f
                     asp_extra = " WHERE (COALESCE(aspect_id,'') = '' OR LOWER(aspect_id) = ?)"
                 asp_args.append(a)
         combined_where = score_filter + asp_extra
+        if _has_source_col(db):
+            combined_where += (" AND " if combined_where else " WHERE ") + _NOT_INTERNAL_SQL.format(p="")
         if not has_lt or not aspect_id:
             rows = db.execute(
                 f"SELECT {sel} FROM learnings{combined_where} ORDER BY id DESC LIMIT ?",
@@ -445,6 +462,8 @@ def search_learnings_fts(query: str, n: int = 20, aspect_id: str | None = None) 
             if has_asp_col and asp:
                 asp_sql = " AND (COALESCE(l.aspect_id,'') = '' OR LOWER(l.aspect_id) = ?)"
                 asp_args.append(asp)
+            if _has_source_col(db):
+                asp_sql += " AND " + _NOT_INTERNAL_SQL.format(p="l.")
             rows = db.execute(
                 f"""SELECT {sel}
                    FROM learnings l
@@ -476,6 +495,8 @@ def search_learnings_fts(query: str, n: int = 20, aspect_id: str | None = None) 
                 if has_asp_col and asp:
                     like_asp = " AND (COALESCE(aspect_id,'') = '' OR LOWER(aspect_id) = ?)"
                     la.append(asp)
+                if _has_source_col(db):
+                    like_asp += " AND " + _NOT_INTERNAL_SQL.format(p="")
                 rows = db.execute(
                     f"SELECT {sel} FROM learnings WHERE content LIKE ?{like_asp} LIMIT ?",
                     (f"%{query}%", *la, n),

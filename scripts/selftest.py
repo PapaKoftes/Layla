@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -168,7 +169,12 @@ def check_inference(model_path: Path | None) -> None:
     stdout = r.stdout or ""
     if "PROBE_OK:" in stdout:
         txt = stdout.split("PROBE_OK:", 1)[1].strip()
-        if txt:
+        if txt and re.search(r"<\|[a-z_]+\|>", txt):
+            # Raw chat-template control tokens in the reply = the prompt reached the model in the wrong
+            # turn format (seen with gpt-oss: ".<|end|><|start|>user..."). It "replied", but the agent will not
+            # behave. This used to pass as OK.
+            _fail("inference turn", f'model replied with raw chat-template tokens (prompt format mismatch): "{txt[:60]}"')
+        elif txt:
             _ok("inference turn", f'model replied: "{txt[:48]}"')
         else:
             _warn("inference turn", "model loaded but returned empty text")

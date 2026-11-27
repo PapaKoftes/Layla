@@ -215,6 +215,21 @@ def caps_from_reflection_state(state: dict) -> PolicyCaps:
     return PolicyCaps()
 
 
+def operator_requested_write(state: dict) -> bool:
+    """This turn's operator message is an explicit "create file X" instruction and writes are allowed.
+
+    The narrow forced-tool rule (services/agent/forced_tool.py) is the one owner of what counts.
+    """
+    if not (state.get("allow_write") or state.get("_allow_write")):
+        return False
+    try:
+        from services.agent.forced_tool import _wants_new_file
+
+        return _wants_new_file(str(state.get("original_goal") or "").strip())
+    except Exception:
+        return False
+
+
 def build_policy_caps(
     state: dict,
     cfg: dict,
@@ -225,13 +240,19 @@ def build_policy_caps(
         return PolicyCaps(sources=["disabled"])
 
     caps = PolicyCaps()
-    try:
-        from services.infrastructure.session_context import get_or_create_session
+    # How the PREVIOUS turn scored is a heuristic for restraining the model's own initiative. It must not
+    # veto what the operator explicitly asks for now: live, a "Create a file named X" with writes allowed
+    # was sometimes offered no write tool at all (the model could only reply "banana" and write nothing),
+    # depending on how the conversation's last turn happened to score. The approval gate still applies.
+    explicit_write = operator_requested_write(state)
+    if not explicit_write:
+        try:
+            from services.infrastructure.session_context import get_or_create_session
 
-        prev = get_or_create_session(conversation_id).get_outcome_evaluation()
-        caps = merge_policy_caps(caps, caps_from_outcome_evaluation(prev))
-    except Exception:
-        pass
+            prev = get_or_create_session(conversation_id).get_outcome_evaluation()
+            caps = merge_policy_caps(caps, caps_from_outcome_evaluation(prev))
+        except Exception:
+            pass
 
     caps = merge_policy_caps(caps, caps_from_turn_intent(state, cfg))
     caps = merge_policy_caps(caps, caps_from_cognitive_workspace(state.get("cognitive_workspace")))
@@ -240,7 +261,8 @@ def build_policy_caps(
     caps = merge_policy_caps(caps, caps_from_tool_reliability(cfg))
     caps = merge_policy_caps(caps, caps_from_reflection_state(state))
 
-    steps = state.get("steps") or []
+    # pre_read_probe is Layla's own automatic file_info before a file op, not work this turn has done.
+    steps = [s for s in (state.get("steps") or []) if not (isinstance(s, dict) and s.get("action") == "pre_read_probe")]
     if (
         caps.require_verify_before_mutate
         and len(steps) >= 1
