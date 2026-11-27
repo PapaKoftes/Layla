@@ -197,7 +197,8 @@ async def lifespan(app: FastAPI):
     if cfg.get("use_chroma"):
         try:
             from layla.memory.vector_store import index_knowledge_docs
-            knowledge_dir = REPO_ROOT / "knowledge"
+            from runtime_safety import knowledge_dir as _knowledge_root
+            knowledge_dir = _knowledge_root()
             if knowledge_dir.exists():
                 def _bg_index_knowledge() -> None:
                     try:
@@ -809,11 +810,13 @@ try:
 except Exception:
     pass
 
+import runtime_safety  # noqa: E402  (module-level state paths below)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
 DOCS_DIR = REPO_ROOT / "docs"
-HISTORY_FILE = REPO_ROOT / "conversation_history.json"
-GOV_PATH = AGENT_DIR / ".governance"
+HISTORY_FILE = runtime_safety.install_state_path(REPO_ROOT / "conversation_history.json")
+GOV_PATH = runtime_safety.GOV_PATH  # one owner: per-user on an installed build (approvals, audit)
 PENDING_FILE = GOV_PATH / "pending.json"
 AUDIT_LOG = GOV_PATH / "audit.log"
 

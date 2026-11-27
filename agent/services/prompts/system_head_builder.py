@@ -736,7 +736,9 @@ def _resolve_knowledge_block(cfg: dict, goal: str, aspect: "dict | None", state:
                 except Exception as _pde:
                     logger.debug("context[project_domains_knowledge] failed: %s", _pde)
                 try:
-                    refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
+                    from runtime_safety import knowledge_dir
+
+                    refresh_knowledge_if_changed(knowledge_dir())
                 except Exception as _e:
                     logger.debug("context[knowledge_refresh] failed: %s", _e)
                 _aid = (aspect.get("id") or "") if isinstance(aspect, dict) else ""

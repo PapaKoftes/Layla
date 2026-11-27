@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 
+## [Unreleased]
+
+### Fixed — features that never worked on an installed copy
+The installer puts Layla in `C:\Program Files\Layla`, which a normal Windows user can't write to. Every feature that saved something inside that folder failed on every installed copy, while all the tests (which run from source) passed. That data is now saved in your own Layla data folder (`%LOCALAPPDATA%\Layla`). Running from source is unchanged.
+- **Approvals.** Any tool that needs your approval (writing a file, running code, restoring a file checkpoint) crashed the turn instead of asking you. Approve, deny and the audit log failed the same way.
+- **Knowledge:** chat imports, saving fetched web pages (`fetch_url(store=True)`), saving crawled pages (this one failed silently), document ingestion, the Obsidian vault, and restoring a memory backup. Knowledge now lives in your data folder, starting with a copy of the knowledge that ships with Layla. Upgrades refresh the shipped files, and files you added are never touched.
+- **Research missions** (including their sandbox), **browser tools** (screenshots and profiles), semantic code search, installing skill packs, LAN pairing and cluster settings, the execution and event logs, and the KB builder.
+- The scheduled clean-up of old research output deleted from a folder nothing writes to, so it never removed anything. It now cleans the right folder.
+
+### Release engineering
+- The clean-machine install test now also checks, on a fresh VM, that an approval gets queued and listed and that a knowledge import works.
+- A new test fails if new code writes into the install folder without going through the data-folder helpers.
+- Fixed a unit test that killed whatever real process happened to have PID 4242. It took down the Windows CI job (and could kill one of your programs if you ran the tests). The Playwright install step now retries on a network blip.
+
 ## [1.7.6] — 2026-09-25
 
 ### Security

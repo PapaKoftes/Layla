@@ -9,10 +9,12 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from runtime_safety import install_state_path
+
 logger = logging.getLogger("layla")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-INSTALLED_DIR = REPO_ROOT / ".layla" / "skill_packs_installed"
+INSTALLED_DIR = install_state_path(REPO_ROOT / ".layla" / "skill_packs_installed")
 
 
 def _manifest_path(pack_dir: Path) -> Path | None:

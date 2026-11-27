@@ -109,10 +109,9 @@ def _storage_path(url: str) -> Path:
     parsed = urlparse(url)
     domain = parsed.netloc.replace(":", "_")
     slug = re.sub(r"[^\w\-]", "_", parsed.path.strip("/"))[:80] or "index"
-    store_dir = (
-        Path(__file__).resolve().parent.parent.parent.parent
-        / "knowledge" / "fetched" / domain
-    )
+    from runtime_safety import knowledge_dir
+
+    store_dir = knowledge_dir() / "fetched" / domain
     store_dir.mkdir(parents=True, exist_ok=True)
     return store_dir / f"{slug}.txt"
 

@@ -101,7 +101,7 @@ from services.safety.agent_safety import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
-RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
+RESEARCH_LAB_ROOT = runtime_safety.install_state_path(AGENT_DIR / ".research_lab")
 
 # ---------------------------------------------------------------------------
 # System head builder: extracted to services/system_head_builder.py

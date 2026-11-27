@@ -92,8 +92,9 @@ def neutralize_untrusted(text: str, enabled: bool = True) -> str:
     return _data_framing_prefix() + _apply_injection_guard(text, enabled) + _data_framing_suffix()
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
+from runtime_safety import knowledge_dir as _knowledge_dir  # noqa: E402
+
+KNOWLEDGE_DIR = _knowledge_dir()  # per-user on installed builds (install dir is read-only)
 INGEST_DIR = KNOWLEDGE_DIR / "_ingested"
 
 

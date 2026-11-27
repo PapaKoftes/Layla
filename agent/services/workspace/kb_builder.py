@@ -87,8 +87,12 @@ def _cfg() -> dict:
 
 
 def _kb_output_dir() -> Path:
-    d = _cfg().get("kb_output_dir", str(_AGENT_DIR / "knowledge" / "_generated"))
-    return Path(d)
+    raw = _cfg().get("kb_output_dir")
+    if raw:
+        return Path(raw)
+    from runtime_safety import install_state_path
+
+    return install_state_path(_AGENT_DIR / "knowledge" / "_generated")
 
 
 def _min_article_len() -> int:

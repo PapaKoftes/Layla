@@ -97,6 +97,10 @@ foreach ($f in @("MODELS.md", "VALUES.md", "README.md")) {
   if (Test-Path $src) { Copy-Item $src $Payload -Force }
 }
 Copy-Item -Path (Join-Path $Root "agent\runtime_config.example.json") -Destination (Join-Path $Payload "runtime_config.example.json") -Force
+# Installed-build marker. runtime_safety.is_installed_build() keys off this file: an installed copy keeps ALL
+# mutable state per-user under LAYLA_DATA_DIR, because the install dir is read-only for a normal user and an
+# upgrade overwrites it. A source checkout never has this file, so dev behaviour is unchanged.
+Set-Content -Path (Join-Path $Payload ".layla_installed") -Value "Layla installed build" -Encoding ASCII
 
 Write-Host "==> Build layla.exe with PyInstaller"
 Push-Location $Root

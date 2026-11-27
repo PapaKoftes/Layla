@@ -15,7 +15,9 @@ def _now_iso() -> str:
 
 class AuditLog:
     def __init__(self, *, agent_dir: Path):
-        self.path = (agent_dir / ".governance" / "autonomous_audit.jsonl").resolve()
+        from runtime_safety import install_state_path
+
+        self.path = install_state_path(agent_dir / ".governance" / "autonomous_audit.jsonl").resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def write_event(self, event: dict[str, Any]) -> None:

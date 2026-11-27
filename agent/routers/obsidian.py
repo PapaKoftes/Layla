@@ -2,15 +2,12 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["obsidian"])
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 @router.post("/obsidian/connect")
@@ -38,7 +35,7 @@ def obsidian_status():
         vp = get_vault_path()
         if vp is None:
             return {"connected": False, "vault_path": None, "two_way_enabled": sync_enabled()}
-        d = diff_vault(_REPO_ROOT)
+        d = diff_vault()
         return {
             "connected": True,
             "vault_path": str(vp),
@@ -58,7 +55,7 @@ def obsidian_diff():
     """Show what files would change on next sync (dry-run)."""
     try:
         from services.infrastructure.obsidian_sync import diff_vault
-        return diff_vault(_REPO_ROOT)
+        return diff_vault()
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -73,7 +70,7 @@ async def obsidian_sync(request: Request):
     force = bool((body or {}).get("force", False))
     try:
         from services.infrastructure.obsidian_sync import sync_vault
-        return sync_vault(_REPO_ROOT, force=force)
+        return sync_vault(force=force)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -99,7 +96,7 @@ async def obsidian_two_way_sync(request: Request):
                  "error": "Two-way sync is disabled. Set obsidian_sync_enabled=true to opt in."},
                 status_code=403,
             )
-        return two_way_sync(_REPO_ROOT, force=force)
+        return two_way_sync(force=force)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -127,7 +124,7 @@ async def obsidian_writeback(request: Request):
                  "error": "Writeback is disabled. Set obsidian_sync_enabled=true to opt in."},
                 status_code=403,
             )
-        return writeback_learnings(n=max(1, min(50, n)), repo_root=_REPO_ROOT)
+        return writeback_learnings(n=max(1, min(50, n)))
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -154,6 +151,6 @@ async def obsidian_export(request: Request):
         return JSONResponse({"ok": False, "error": "ids list is required"}, status_code=400)
     try:
         from services.infrastructure.obsidian_sync import export_to_vault
-        return export_to_vault([str(i) for i in ids], _REPO_ROOT)
+        return export_to_vault([str(i) for i in ids])
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

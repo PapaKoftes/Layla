@@ -212,7 +212,8 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
     import os as _os
 
     from layla.time_utils import utcnow
-    gov_path = Path(__file__).resolve().parent.parent.parent / ".governance"
+    from runtime_safety import GOV_PATH as gov_path  # one owner; main.PENDING_FILE / GET /pending read the same file
+
     gov_path.mkdir(parents=True, exist_ok=True)
     pending_file = gov_path / "pending.json"
     entry_id = str(_uuid.uuid4())

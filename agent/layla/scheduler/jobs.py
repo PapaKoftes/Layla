@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from layla.scheduler.activity import get_last_activity_ts, is_game_running
+from runtime_safety import install_state_path
 from services.infrastructure.data_paths import layla_data_file as _layla_data_file
 
 logger = logging.getLogger("layla")
@@ -17,7 +18,7 @@ logger = logging.getLogger("layla")
 # Paths needed by _bg_cleanup — derived the same way main.py computes them.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _AGENT_DIR = Path(__file__).resolve().parent.parent.parent
-_GOV_PATH = _AGENT_DIR / ".governance"
+_GOV_PATH = install_state_path(_AGENT_DIR / ".governance")  # == runtime_safety.GOV_PATH
 _AUDIT_LOG = _GOV_PATH / "audit.log"
 _EXEC_LOG = _GOV_PATH / "execution_log.jsonl"          # append-only tool log (C1)
 _EXEC_LOG_LEGACY = _GOV_PATH / "execution_log.json"    # pre-1.0 array format — remove once
@@ -412,7 +413,8 @@ def _bg_cleanup() -> None:
             days = int(_c.get("retention_research_output_days", 90) or 90)
             if days > 0:
                 cutoff_ts = time.time() - (days * 86400)
-                out_dir = _REPO_ROOT / ".research_output"
+                # Same dir research_lab writes to (was _REPO_ROOT, which nothing writes: retention never ran).
+                from services.reasoning.research_lab import RESEARCH_OUTPUT as out_dir
                 if out_dir.exists():
                     for p in out_dir.glob("*.md"):
                         if p.name == "last_research.md":

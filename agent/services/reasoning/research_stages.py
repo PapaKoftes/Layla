@@ -10,10 +10,12 @@ import json
 import logging
 from pathlib import Path
 
+from runtime_safety import install_state_path
+
 logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent.parent.parent
-RESEARCH_BRAIN = AGENT_DIR / ".research_brain"
+RESEARCH_BRAIN = install_state_path(AGENT_DIR / ".research_brain")
 
 STAGE_ORDER = ("mapping", "investigation", "verification", "contradiction_check", "distillation", "synthesis")
 SUBDIRS = (

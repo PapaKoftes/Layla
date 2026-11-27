@@ -670,7 +670,9 @@ def log_event(message: str, level: str = "info", context: dict | None = None) ->
     from layla.time_utils import utcnow
     entry = {"ts": str(utcnow())[:19], "level": level.upper(), "message": message[:500], "context": context or {}}
     try:
-        log_path = Path(__file__).resolve().parent.parent.parent / ".governance" / "layla-events.log"
+        from runtime_safety import GOV_PATH
+
+        log_path = GOV_PATH / "layla-events.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(_json.dumps(entry) + "\n")
@@ -681,7 +683,10 @@ def log_event(message: str, level: str = "info", context: dict | None = None) ->
 def trace_last_run(n: int = 20) -> dict:
     """Return the last N entries from the audit log for debugging what the agent did."""
     import json as _json
-    audit_path = Path(__file__).resolve().parent.parent.parent / ".governance" / "audit.log"
+
+    from runtime_safety import GOV_PATH
+
+    audit_path = GOV_PATH / "audit.log"
     if not audit_path.exists():
         return {"ok": False, "error": "No audit log found at agent/.governance/audit.log"}
     try:
@@ -702,7 +707,10 @@ def trace_last_run(n: int = 20) -> dict:
 def tool_metrics(top_n: int = 15) -> dict:
     """Analyze audit log for tool usage statistics: call counts, approval rates, never-called tools."""
     import json as _json
-    audit_path = Path(__file__).resolve().parent.parent.parent / ".governance" / "audit.log"
+
+    from runtime_safety import GOV_PATH
+
+    audit_path = GOV_PATH / "audit.log"
     call_counts: dict = {}
     approved, rejected, total = 0, 0, 0
     if audit_path.exists():

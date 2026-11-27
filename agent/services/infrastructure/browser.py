@@ -23,11 +23,12 @@ from constants import (
     BROWSER_NAV_TIMEOUT_MS,
     BROWSER_PAGE_TEXT_MAX_CHARS,
 )
+from runtime_safety import install_state_path
 
 logger = logging.getLogger("layla.browser")
 
-_SCREENSHOT_DIR = Path(__file__).resolve().parent.parent / ".screenshots"
-_SCREENSHOT_DIR.mkdir(exist_ok=True)
+_SCREENSHOT_DIR = install_state_path(Path(__file__).resolve().parent.parent / ".screenshots")
+_SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
 _playwright_lock = threading.Lock()
 _pw = None  # playwright instance
@@ -94,7 +95,7 @@ async def _init_context():
         "--disable-blink-features=AutomationControlled",
     ]
     if persistent:
-        ud = Path(__file__).resolve().parent.parent / ".browser_profiles" / profile
+        ud = install_state_path(Path(__file__).resolve().parent.parent / ".browser_profiles") / profile
         ud.mkdir(parents=True, exist_ok=True)
         _context = await _pw.chromium.launch_persistent_context(
             str(ud),

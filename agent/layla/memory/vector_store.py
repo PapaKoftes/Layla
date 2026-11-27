@@ -1065,9 +1065,8 @@ def get_knowledge_chunks_with_parent(
         if source not in seen_sources:
             try:
                 # Look up path relative to knowledge/ dir
-                from pathlib import Path as _P
-                knowledge_dir = _P(__file__).resolve().parent.parent.parent.parent / "knowledge"
-                full_path = knowledge_dir / source
+                from runtime_safety import knowledge_dir as _knowledge_root
+                full_path = _knowledge_root() / source
                 if full_path.exists():
                     seen_sources[source] = full_path.read_text(encoding="utf-8", errors="replace")
                 else:

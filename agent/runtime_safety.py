@@ -14,10 +14,6 @@ logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENT_DIR.parent
-GOV_PATH = AGENT_DIR / ".governance"
-APPROVAL_FILE = GOV_PATH / "approvals.json"
-EXEC_LOG_FILE = GOV_PATH / "execution_log.jsonl"  # append-only JSON-lines (see log_execution)
-_EXEC_LOG_LEGACY = GOV_PATH / "execution_log.json"  # pre-1.0 whole-file array; removed by _bg_cleanup
 IDENTITY_FILE = AGENT_DIR / "system_identity.txt"
 PERSONALITY_EXPRESSION_FILE = AGENT_DIR / "personality_expression.txt"
 COGNITIVE_LENS_FILE = AGENT_DIR / "cognitive_lens.txt"
@@ -44,6 +40,99 @@ def default_models_dir() -> Path:
             logger.debug("default_models_dir mkdir failed: %s", e)
         return p
     return REPO_ROOT / "models"
+
+
+_KNOWLEDGE_DIR: Path | None = None
+_KNOWLEDGE_LOCK = threading.Lock()
+
+
+def _sync_shipped_knowledge(shipped: Path, dest: Path) -> None:
+    """Copy the shipped knowledge tree into the per-user root: files that are missing, or whose shipped copy
+    is newer (an upgrade changed it; copy2 keeps mtimes, so an unchanged file is never re-copied). Files the
+    user added are never touched."""
+    if not shipped.is_dir():
+        return
+    for src in shipped.rglob("*"):
+        if not src.is_file():
+            continue
+        out = dest / src.relative_to(shipped)
+        try:
+            if out.is_file() and src.stat().st_mtime <= out.stat().st_mtime:
+                continue
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, out)
+        except OSError as e:
+            logger.debug("knowledge sync skipped %s: %s", src, e)
+
+
+INSTALL_MARKER = REPO_ROOT / ".layla_installed"  # written into the installer payload only (build_installer.ps1)
+_INSTALLED: bool | None = None
+
+
+def is_installed_build() -> bool:
+    """True when running from an INSTALLED copy (the installer payload carries INSTALL_MARKER) that has a
+    per-user data dir. An installed copy keeps all mutable state under LAYLA_DATA_DIR: its install dir is
+    read-only for a normal user (C:\\Program Files\\Layla) and an upgrade overwrites it. A source checkout
+    never has the marker, so it keeps the historical in-tree locations. Deliberately NOT a write probe: a probe
+    writes into the source tree on every start (test_operator_state_isolation catches exactly that)."""
+    global _INSTALLED
+    if _INSTALLED is None:
+        _INSTALLED = INSTALL_MARKER.is_file() and resolve_layla_data_dir() is not None
+    return _INSTALLED
+
+
+def install_state_path(p: Path) -> Path:
+    """Where mutable state that historically lived INSIDE the install tree actually goes.
+
+    Identity on a source checkout, so dev behaviour is unchanged. On an installed build, the same
+    relative layout under ``<LAYLA_DATA_DIR>/install_state/`` — e.g. ``<install>/agent/.governance`` ->
+    ``<data>/install_state/agent/.governance``. Every definition of a given state path (writer AND reader,
+    e.g. the approval queue and /pending, or the research-lab sandbox root and its check) must go through
+    this, so they can never disagree. Paths outside the install tree are returned unchanged.
+    """
+    p = Path(p)
+    if not is_installed_build():
+        return p
+    try:
+        rel = p.resolve().relative_to(REPO_ROOT.resolve())
+    except ValueError:
+        return p
+    data = resolve_layla_data_dir()
+    return (data / "install_state" / rel) if data else p
+
+
+def knowledge_dir() -> Path:
+    """THE knowledge root. Every reader and writer of knowledge docs goes through this (one owner).
+
+    Source checkout: ``REPO_ROOT/knowledge``, unchanged.
+    Installed build (see is_installed_build; e.g. C:\\Program Files\\Layla): ``<LAYLA_DATA_DIR>/knowledge``,
+    seeded from the shipped tree so packs and base docs are present, and imports, fetched pages, ingestion
+    and the Obsidian vault have somewhere they can actually write. Per-user on purpose: making the shared
+    Program Files dir writable instead would index one user's imported chats into another user's Layla.
+    """
+    global _KNOWLEDGE_DIR
+    with _KNOWLEDGE_LOCK:
+        if _KNOWLEDGE_DIR is None:
+            shipped = REPO_ROOT / "knowledge"
+            chosen = shipped
+            data = resolve_layla_data_dir()
+            if data and is_installed_build():
+                chosen = data / "knowledge"
+                try:
+                    chosen.mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    logger.warning("knowledge_dir: cannot create %s: %s", chosen, e)
+                _sync_shipped_knowledge(shipped, chosen)
+                logger.info("knowledge_dir: installed build; using per-user %s", chosen)
+            _KNOWLEDGE_DIR = chosen
+        return _KNOWLEDGE_DIR
+
+
+# Governance state (approvals, execution log) is mutable runtime state: per-user on an installed build.
+GOV_PATH = install_state_path(AGENT_DIR / ".governance")
+APPROVAL_FILE = GOV_PATH / "approvals.json"
+EXEC_LOG_FILE = GOV_PATH / "execution_log.jsonl"  # append-only JSON-lines (see log_execution)
+_EXEC_LOG_LEGACY = GOV_PATH / "execution_log.json"  # pre-1.0 whole-file array; removed by _bg_cleanup
 
 
 def _resolve_config_file() -> Path:
@@ -1352,8 +1441,8 @@ def _knowledge_priority_from_text(text: str) -> str:
 
 def load_knowledge_docs(max_bytes: int = 6000) -> str:
     """Walk knowledge/ and concatenate .md / .txt files up to max_bytes. Excludes .identity. Priority: core > support > flavor."""
-    knowledge_dir = REPO_ROOT / "knowledge"
-    if not knowledge_dir.exists():
+    kdir = knowledge_dir()
+    if not kdir.exists():
         return ""
     # Preset scoping (v1.7.5): when the operator has selected a preset/pack set, only inject
     # docs from enabled packs. Default (nothing configured) -> _enabled is None -> all docs.
@@ -1367,7 +1456,7 @@ def load_knowledge_docs(max_bytes: int = 6000) -> str:
         _is_enabled = None
     collected = []
     for ext in ("*.md", "*.txt"):
-        for f in sorted(knowledge_dir.rglob(ext)):
+        for f in sorted(kdir.rglob(ext)):
             if ".identity" in str(f):
                 continue
             if _is_enabled is not None and not _is_enabled(f, _enabled):

@@ -562,8 +562,9 @@ def sync_compact_history() -> dict:
         _history.append(m)
     try:
         from routers.paths import REPO_ROOT
+        from runtime_safety import install_state_path
 
-        hist_file = REPO_ROOT / "conversation_history.json"
+        hist_file = install_state_path(REPO_ROOT / "conversation_history.json")
         hist_file.write_text(json.dumps(list(_history), indent=2), encoding="utf-8")
     except Exception as e:
         logger.debug("sync_compact_history save failed: %s", e)

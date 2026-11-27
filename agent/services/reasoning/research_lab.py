@@ -4,15 +4,17 @@ import logging
 import shutil
 from pathlib import Path
 
+from runtime_safety import install_state_path
+
 logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent.parent.parent
-RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
+RESEARCH_LAB_ROOT = install_state_path(AGENT_DIR / ".research_lab")  # == agent_loop / run_setup
 RESEARCH_LAB_WORKSPACE = RESEARCH_LAB_ROOT / "workspace"
 RESEARCH_LAB_SOURCE_COPY = RESEARCH_LAB_WORKSPACE / "source_copy"
-RESEARCH_MISSIONS_DIR = AGENT_DIR / "research_missions"
-RESEARCH_BRAIN = AGENT_DIR / ".research_brain"
-RESEARCH_OUTPUT = AGENT_DIR / ".research_output"
+RESEARCH_MISSIONS_DIR = install_state_path(AGENT_DIR / "research_missions")
+RESEARCH_BRAIN = install_state_path(AGENT_DIR / ".research_brain")
+RESEARCH_OUTPUT = install_state_path(AGENT_DIR / ".research_output")
 
 _DEFAULT_OUTPUT_STRUCTURE = (
     "Produce: System Understanding, Weakness Map, Upgrade Opportunities, "

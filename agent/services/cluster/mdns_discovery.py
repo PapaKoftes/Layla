@@ -34,13 +34,15 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from runtime_safety import install_state_path
+
 logger = logging.getLogger("layla.mdns")
 
 # ── Constants ────────────────────────────────────────────────────────────────
 SERVICE_TYPE = "_layla._tcp.local."
 SERVICE_NAME_PREFIX = "Layla-"
 _AGENT_DIR = Path(__file__).resolve().parent.parent
-_INSTANCE_ID_FILE = _AGENT_DIR / ".governance" / "instance_id"
+_INSTANCE_ID_FILE = install_state_path(_AGENT_DIR / ".governance" / "instance_id")
 _DISCOVERY_TTL_S = 30  # how long a discovered peer stays valid without re-announcement
 
 # ── Module state ─────────────────────────────────────────────────────────────

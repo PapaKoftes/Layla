@@ -9,10 +9,11 @@ import asyncio
 import json
 from pathlib import Path
 
+from runtime_safety import install_state_path
 from services.reasoning.research_utils import _extract_json_block, normalize_stage_text
 
 AGENT_DIR = Path(__file__).resolve().parent.parent.parent
-RESEARCH_BRAIN = AGENT_DIR / ".research_brain"
+RESEARCH_BRAIN = install_state_path(AGENT_DIR / ".research_brain")
 
 INTELLIGENCE_ORDER = (
     "confidence", "consistency", "risk", "tradeoffs", "patterns",
