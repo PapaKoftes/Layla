@@ -32,6 +32,16 @@ NEVER = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _empty_default_sandbox(tmp_path_factory, monkeypatch):
+    """No workspace on a request means the default sandbox; keep it empty here so this box's real one (which
+    may hold a probe_token.txt) never decides a test."""
+    from layla.tools import sandbox_core
+
+    empty = tmp_path_factory.mktemp("default_sandbox")
+    monkeypatch.setattr(sandbox_core, "_get_sandbox", lambda: empty)
+
+
 @pytest.mark.parametrize("msg", FIRES)
 def test_fires_on_explicit_create_requests(msg):
     assert forced_first_tool(msg, allow_write=True, valid_tools=TOOLS, steps=[]) == "write_file"
@@ -56,7 +66,7 @@ def test_named_existing_file_forces_a_read(tmp_path):
     ws = str(tmp_path)
     for msg in ("What is the secret token in probe_token.txt?", "Fix the typo in probe_token.txt"):
         assert forced_first_tool(msg, allow_write=False, valid_tools=TOOLS, steps=[], workspace_root=ws) == "read_file", msg
-    # not existing, no workspace, two files, or not first step -> no forcing
+    # not existing, not in the (empty) default sandbox, two files, or not first step -> no forcing
     assert forced_first_tool("What is in missing.txt?", allow_write=False, valid_tools=TOOLS, steps=[], workspace_root=ws) is None
     assert forced_first_tool("What is in probe_token.txt?", allow_write=False, valid_tools=TOOLS, steps=[]) is None
     assert forced_first_tool("Compare probe_token.txt and a.md", allow_write=False, valid_tools=TOOLS, steps=[], workspace_root=ws) is None
@@ -91,3 +101,16 @@ def test_decision_loop_hands_allow_write_to_the_decision():
                for n in ast.walk(ast.parse(src))), "decision_loop must expose allow_write to llm_decision"
     dsrc = (AGENT_DIR / "services" / "agent" / "llm_decision.py").read_text(encoding="utf-8")
     assert "force_tool=_force" in dsrc and "forced_first_tool(" in dsrc
+
+
+def test_no_workspace_on_the_request_means_the_default_sandbox(tmp_path, monkeypatch):
+    """The web UI sends no workspace_root; live, the forced read then never fired and the token was invented."""
+    from layla.tools import sandbox_core
+    from services.agent.forced_tool import forced_first_tool
+
+    (tmp_path / "probe_token.txt").write_text("The secret token is TOK-1", encoding="utf-8")
+    monkeypatch.setattr(sandbox_core, "_get_sandbox", lambda: tmp_path)
+    msg = "What is the secret token in probe_token.txt?"
+    assert forced_first_tool(msg, allow_write=False, valid_tools=TOOLS, steps=[], workspace_root="") == "read_file"
+    assert forced_first_tool("What is in missing.txt?", allow_write=False, valid_tools=TOOLS, steps=[],
+                             workspace_root="") is None

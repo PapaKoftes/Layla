@@ -40,9 +40,20 @@ def _wants_new_file(m: str) -> bool:
 
 
 def _named_existing_file(m: str, workspace_root: str) -> str | None:
-    """The single filename the message names, if it exists under the workspace."""
+    """The single filename the message names, if it exists under the workspace.
+
+    No workspace on the request means the default sandbox — the same folder the file tools resolve paths
+    against. The web UI sends none ("WS: (default sandbox)"), and returning None there meant the forced
+    read never fired in the UI: live, "What is the secret token in probe_token.txt?" got no read_file and
+    an invented token.
+    """
     if not workspace_root:
-        return None
+        try:
+            from layla.tools.sandbox_core import _get_sandbox
+
+            workspace_root = str(_get_sandbox())
+        except Exception:
+            return None
     names = set(_FILENAME.findall(_URL.sub(" ", m)))
     if len(names) != 1:
         return None
