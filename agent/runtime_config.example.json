@@ -21,6 +21,8 @@
 
   "use_mmap": true,
   "use_mlock": false,
+  "kv_prompt_cache_enabled": true,
+  "kv_prompt_cache_mb": 512,
   "flash_attn": true,
   "type_k": 8,
   "type_v": 8,

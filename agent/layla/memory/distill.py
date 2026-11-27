@@ -235,7 +235,9 @@ def memory_distill(learnings: list[dict]) -> dict:
     learnings: list of dicts with keys id, content, type, created_at (e.g. get_recent_learnings).
     Returns: {"merged_groups": N, "removed": M, "added": K}.
     """
-    if not learnings or len(learnings) < 2:
+    # Never merge Layla's own bookkeeping: a merged row loses its source and then passes as a fact.
+    learnings = [L for L in (learnings or []) if not (L.get("content") or "").lstrip().startswith("Reflection (")]
+    if len(learnings) < 2:
         return {"merged_groups": 0, "removed": 0, "added": 0}
     groups = _group_similar(learnings)
     return _merge_groups(groups)
@@ -252,7 +254,8 @@ def memory_distill_semantic(learnings: list[dict], threshold: float = 0.75) -> d
         import numpy as np
 
         from layla.memory.vector_store import embed
-        valid = [(i, L) for i, L in enumerate(learnings) if (L.get("content") or "").strip()]
+        valid = [(i, L) for i, L in enumerate(learnings) if (L.get("content") or "").strip()
+                 and not (L.get("content") or "").lstrip().startswith("Reflection (")]
         if len(valid) < 2:
             return memory_distill(learnings)
         subset = [v[1] for v in valid]

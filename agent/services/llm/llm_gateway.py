@@ -611,6 +611,20 @@ def _get_llm():
         # CPU-only (n_gpu_layers == 0). GPU runs still default it on.
         _cpu_only = _safe_int(cfg.get("n_gpu_layers", -1), -1) == 0
         use_flash = bool(cfg.get("flash_attn", not _cpu_only))
+        # Full GPU offload: every layer lives in VRAM, so a memory-mapped model file only keeps a second,
+        # host-side copy resident. Measured (jinx-20b, RTX 5060 Ti, 31 GB RAM): use_mmap=True -> +16.3 GB
+        # host RAM (system 95%, 12 s load); False -> +2.2 GB (50%, 7 s). That copy pushed the box into the
+        # admission gate's "system_busy" and made the whole PC lag. Installers write "use_mmap": true as a
+        # blanket default, so this is decided here, at load; partial/CPU offload still honours use_mmap.
+        _full_offload = _safe_int(cfg.get("n_gpu_layers", -1), -1) < 0
+        if _full_offload:
+            try:
+                from services.infrastructure.auto_tune import _gpu_offload_available
+
+                _full_offload = _gpu_offload_available()
+            except Exception:
+                _full_offload = False
+        _keep_host_copy = bool(cfg.get("use_mmap_full_offload", False))
         kwargs = {
             "model_path": str(model_path),
             "n_ctx": n_ctx,
@@ -618,8 +632,8 @@ def _get_llm():
             "n_batch": n_batch,
             "n_threads": n_threads,
             "n_threads_batch": n_threads_batch,
-            "use_mlock": bool(cfg.get("use_mlock", False)),
-            "use_mmap": bool(cfg.get("use_mmap", True)),
+            "use_mlock": bool(cfg.get("use_mlock", False)) and (not _full_offload or _keep_host_copy),
+            "use_mmap": bool(cfg.get("use_mmap", True)) and (not _full_offload or _keep_host_copy),
             "verbose": False,
             # Flash attention: dramatically reduces VRAM + speeds up long contexts
             "flash_attn": use_flash,

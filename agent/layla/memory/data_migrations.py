@@ -527,3 +527,47 @@ def _migrate_evolution_layer() -> None:
                 db.commit()
     except Exception:
         pass
+
+
+# Content prefixes of Layla's own per-turn bookkeeping (reflection_engine). Before recall excluded that
+# source, memory distillation merged reflections into ordinary rows (source '', type 'fact'), and those
+# kept leaking into prompts as if they were facts about the operator (live: "Personal context: Learning:
+# Reflection ([Active workspace: ...]" in the system head).
+_LEGACY_INTERNAL_PREFIXES = ("Reflection (",)
+
+
+def _retag_legacy_internal_learnings() -> int:
+    """Tag source-less learnings whose (decrypted) text is Layla's own reflection bookkeeping as
+    source='reflection_engine', so recall excludes them. Idempotent; touches only rows with no source."""
+    try:
+        from layla.memory.learnings import _dec
+    except Exception:
+        return 0
+    tagged = 0
+    try:
+        with _conn() as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(learnings)").fetchall()}
+            if "source" not in cols:
+                return 0
+            rows = db.execute("SELECT id, content FROM learnings WHERE COALESCE(source,'') = ''").fetchall()
+            ids = []
+            for r in rows:
+                try:
+                    text = _dec(r[1] or "")
+                except Exception:
+                    continue
+                if text.lstrip().startswith(_LEGACY_INTERNAL_PREFIXES):
+                    ids.append(int(r[0]))
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                db.execute(
+                    f"UPDATE learnings SET source = 'reflection_engine' WHERE id IN ({','.join('?' * len(chunk))})",
+                    chunk,
+                )
+            if ids:
+                db.commit()
+                logger.info("re-tagged %d legacy merged reflection learning(s) as internal", len(ids))
+            tagged = len(ids)
+    except Exception as e:
+        logger.debug("retag legacy internal learnings skipped: %s", e)
+    return tagged

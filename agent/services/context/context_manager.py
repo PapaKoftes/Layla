@@ -629,6 +629,16 @@ def build_system_prompt(
                 rebuilt.append((k, c))
         built = rebuilt
 
+    # Emit the per-turn TASK (current_goal) at the END, next to current_task. It is ALLOCATED early (above)
+    # so token pressure can never squeeze it out, but EMITTED early it split every turn's prompt after the
+    # first ~5 KB: everything behind it (scratchpad, memory, reference docs) was re-processed from scratch
+    # on every turn instead of reused from the KV prompt cache. Priority and placement are independent.
+    _goal = [kc for kc in built if kc[0] == "current_goal"]
+    if _goal:
+        _rest = [kc for kc in built if kc[0] != "current_goal"]
+        _at = next((i for i, (k, _) in enumerate(_rest) if k == "current_task"), len(_rest))
+        built = _rest[:_at] + _goal + _rest[_at:]
+
     parts = [c for _, c in built]
     final = "\n\n".join(parts) if parts else ""
     metrics["total_tokens"] = token_estimate(final)

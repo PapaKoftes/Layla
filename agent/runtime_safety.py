@@ -859,6 +859,10 @@ def load_config() -> dict:
             "n_threads_batch": None,
             "use_mlock": False,
             "use_mmap": True,
+            # KV prompt-prefix cache (BL-108). On by default since the system head was made prefix-stable:
+            # measured on jinx-20b, the reply's prompt processing fell from ~20 s to ~10-13 s per turn.
+            "kv_prompt_cache_enabled": True,
+            "kv_prompt_cache_mb": 512,
             "top_p": 0.95,
             "repeat_penalty": 1.1,
             "top_k": 40,

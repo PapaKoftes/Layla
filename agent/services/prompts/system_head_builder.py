@@ -1058,8 +1058,8 @@ def _gather_workspace_context(goal: str, cfg: dict, workspace_root: str, packed_
     except Exception as _e:
         logger.debug("context[project_context] failed: %s", _e)
 
-    if sub_goals:
-        workspace_context_parts.append("Sub-objectives for this run: " + "; ".join(sub_goals[:3]))
+    # Sub-objectives are NOT repeated here: the TASK section (current_goal) carries them. This duplicate sat
+    # mid-head and changed every turn, so everything after it was re-processed instead of reused.
     # BL-241 world model — situational awareness (current project/blockers, repo index, machine,
     # mode) belongs in the agent_state section (its own budget) so it isn't first-to-truncate at
     # the tail of system_instructions. Was an inert GET /world nobody read. Skipped on phatic turns.
