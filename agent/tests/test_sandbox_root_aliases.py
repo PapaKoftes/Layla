@@ -28,6 +28,8 @@ def test_root_aliases_list_the_workspace(ws, alias):
     assert r.get("ok") and [e["name"] for e in r["entries"]] == ["a.md"], r
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="drive-less rooted paths exist only on Windows; "
+                    "on POSIX /a.md is truly absolute and stays subject to the sandbox check")
 def test_rooted_driveless_path_is_workspace_relative(ws):
     root, fo = ws
     assert fo._resolve_sandboxed_path("/a.md") == (root / "a.md").resolve()

@@ -9,5 +9,7 @@
 # NOTE: the fingerprint's commit SHA must track history rewrites. The original 497d0fb6… entry went
 # stale after `git filter-repo` re-hashed every commit (the introducing commit is now 72d6cff2…),
 # which silently reopened this finding and turned the whole Secret-scan CI job red. Re-pin after any
-# future history rewrite by running gitleaks and copying the printed Fingerprint.
-72d6cff2b790f3803afedb19af7a019ce11214e0:agent/tests/test_registry_smoke.py:generic-api-key:400
+# future history rewrite by running gitleaks and copying the printed Fingerprint. Re-pinned 2026-11-27
+# (72d6cff2… -> 3136ad14…) after the second rewrite: find the commit with
+# `git log -S<token-prefix> -- agent/tests/test_registry_smoke.py`.
+3136ad14d4f557852f6fe37c084eac60fb7a7148:agent/tests/test_registry_smoke.py:generic-api-key:400

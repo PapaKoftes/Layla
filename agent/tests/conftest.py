@@ -157,6 +157,22 @@ def _block_llama_cpp_on_ci():
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _no_native_gpu_probe():
+    """Unit tests never probe real GPU offload: the first llama.cpp backend load could exceed the
+    per-test timeout on CI Windows runners (see auto_tune._GPU_OFFLOAD), and results must not depend
+    on the machine. Tests of the probe itself reset auto_tune._GPU_OFFLOAD to None."""
+    if _REAL_LLM:
+        yield
+        return
+    from services.infrastructure import auto_tune
+
+    prev = auto_tune._GPU_OFFLOAD
+    auto_tune._GPU_OFFLOAD = False
+    yield
+    auto_tune._GPU_OFFLOAD = prev
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _force_test_db_path(tmp_path_factory):
     """
     Safety: never let tests touch the operator's real layla.db.
