@@ -42,6 +42,12 @@ def _resolve_sandboxed_path(path: str) -> Path:
     # empty". These all mean the workspace root.
     if raw.strip("/\\.") == "":
         return Path(root).resolve()
+    # "/workspace", "workspace", or the root folder's own name also mean the root (live: list_dir
+    # {"path": "/workspace"} -> "Path not found" -> "your workspace path is invalid") — unless a real
+    # subfolder by that name exists.
+    _alias = raw.replace("\\", "/").strip("/").removeprefix("./").strip("/").lower()
+    if _alias in ("workspace", Path(root).name.lower()) and not (Path(root) / _alias).exists():
+        return Path(root).resolve()
     p = Path(raw)
     if p.is_absolute():
         return p.resolve()

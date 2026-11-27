@@ -39,3 +39,16 @@ def test_real_absolute_paths_still_go_through_the_sandbox_check(ws, tmp_path_fac
     root, fo = ws
     outside = tmp_path_factory.mktemp("elsewhere")
     assert fo.list_dir(str(outside)).get("ok") is False
+
+
+def test_workspace_word_and_root_name_mean_the_root(ws):
+    """Live: list_dir {"path": "/workspace"} -> "Path not found" -> "your workspace path is invalid"."""
+    root, fo = ws
+    for alias in ("/workspace", "workspace", "./workspace/", r"\workspace", "/" + root.name):
+        assert fo._resolve_sandboxed_path(alias) == root.resolve(), alias
+
+
+def test_a_real_subfolder_named_workspace_still_wins(ws):
+    root, fo = ws
+    (root / "workspace").mkdir()
+    assert fo._resolve_sandboxed_path("workspace") == (root / "workspace").resolve()

@@ -329,7 +329,14 @@ def semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None
 
 
 def decompose_goal(goal: str) -> list:
-    """If objective is broad, return 2-3 sub-objectives; else return []."""
+    """If objective is broad, return 2-3 sub-objectives; else return [].
+
+    Judged on the operator's words only. The goal arrives prefixed with prompt_optimizer enrichments
+    ("[Active workspace: C:\\...]"), and that prefix alone made every workspace request — "Say hello"
+    included — longer than 80 chars, i.e. "broad": an extra ~4 s model call per turn whose sub-objectives
+    were then injected as the turn's TASK.
+    """
+    goal = re.sub(r"^(?:\s*\[[^\]\n]*\]\s*\n)+", "", goal or "")
     if not goal or len(goal.strip()) < 20:
         return []
     g = goal.lower().strip()
